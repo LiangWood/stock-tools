@@ -32,7 +32,7 @@ stock-tool/
 ## 資料來源
 
 - **套件：** yfinance（免費，資料延遲約 15 分鐘）
-- **股票池：** S&P 500（約 500 檔），清單從 Wikipedia 或 hardcode 維護
+- **股票池：** S&P 500（約 500 檔），清單從 Wikipedia（`pandas.read_html`）動態抓取，失敗時 fallback 到本地 hardcode 清單
 - **抓取內容：** 每檔股票近 60 個交易日的 OHLCV 日線資料
 
 ---
