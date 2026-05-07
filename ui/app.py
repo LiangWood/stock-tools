@@ -72,34 +72,37 @@ class App(ctk.CTk):
     def _on_universe_change(self, value: str):
         mode = "tw" if value == "台股" else "us"
         self._table.set_mode(mode)
+        self._fetched_data = {}
 
     def _start_fetch(self):
+        universe = self._universe_btn.get()
         self._refresh_btn.configure(state="disabled", text="載入中…")
         self._status_label.configure(text="取得股票清單…")
-        thread = threading.Thread(target=self._fetch_worker, daemon=True)
+        thread = threading.Thread(target=self._fetch_worker, args=(universe,), daemon=True)
         thread.start()
         self._poll_id = self.after(100, self._poll_queue)
 
-    def _fetch_worker(self):
+    def _fetch_worker(self, universe: str):
         try:
-            universe = self._universe_btn.get()
-
             def progress(done, total):
                 self._queue.put((_Q_PROGRESS, f"抓取中 {done}/{total}"))
 
             if universe == "台股":
                 data = fetch_tw_all(progress_callback=progress)
                 scores = compute_tw_scores(data)
-                self._fetched_data = {
-                    ticker: d.get("ohlcv") for ticker, d in data.items() if d
+                if scores.empty:
+                    self._queue.put((_Q_ERROR, "台股資料取得失敗，請稍後再試"))
+                    return
+                ohlcv_data = {
+                    ticker: d.get("ohlcv") for ticker, d in data.items() if d is not None
                 }
             else:
                 tickers = _US_UNIVERSES[universe]()
                 data = fetch_all(tickers, progress_callback=progress)
                 scores = compute_scores(data)
-                self._fetched_data = data
+                ohlcv_data = data
 
-            self._queue.put((_Q_DONE, scores))
+            self._queue.put((_Q_DONE, (scores, ohlcv_data)))
         except Exception as exc:
             logger.exception("Fetch worker error")
             self._queue.put((_Q_ERROR, str(exc)))
@@ -113,12 +116,15 @@ class App(ctk.CTk):
             if msg_type == _Q_PROGRESS:
                 self._status_label.configure(text=payload)
             elif msg_type == _Q_DONE:
-                self._table.update_data(payload)
+                scores, ohlcv_data = payload
+                self._fetched_data = ohlcv_data
+                self._table.update_data(scores)
                 now = datetime.now().strftime("%H:%M:%S")
                 self._status_label.configure(text=f"上次更新 {now}")
                 self._reset_btn()
                 return
             elif msg_type == _Q_ERROR:
+                self._fetched_data = {}
                 self._status_label.configure(text=f"錯誤：{payload}")
                 self._reset_btn()
                 return
