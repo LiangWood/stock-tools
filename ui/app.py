@@ -77,6 +77,7 @@ class App(ctk.CTk):
     def _start_fetch(self):
         universe = self._universe_btn.get()
         self._refresh_btn.configure(state="disabled", text="載入中…")
+        self._universe_btn.configure(state="disabled")
         self._status_label.configure(text="取得股票清單…")
         thread = threading.Thread(target=self._fetch_worker, args=(universe,), daemon=True)
         thread.start()
@@ -132,6 +133,7 @@ class App(ctk.CTk):
 
     def _reset_btn(self):
         self._refresh_btn.configure(state="normal", text="刷新")
+        self._universe_btn.configure(state="normal")
 
     def _on_close(self):
         if self._poll_id is not None:
