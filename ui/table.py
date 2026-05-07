@@ -38,6 +38,8 @@ _FG          = "#ffffff"
 _HEADING_BG  = "#1a1a2e"
 _HEADING_FG  = "#00c853"
 _SELECTED_BG = "#1f538d"
+_TW_RED   = "#ff5252"   # 台股漲（紅）
+_TW_GREEN = "#00c853"   # 台股跌（綠）
 
 
 class TablePanel(ctk.CTkFrame):
@@ -85,6 +87,8 @@ class TablePanel(ctk.CTkFrame):
         if mode == "tw":
             self._sort_col = "tw_score"
             self._build(TW_COLUMNS)
+            self._tree.tag_configure("tw_up",   foreground=_TW_RED)
+            self._tree.tag_configure("tw_down", foreground=_TW_GREEN)
         else:
             self._sort_col = "momentum_score"
             self._build(_COLUMNS)
@@ -131,6 +135,7 @@ class TablePanel(ctk.CTkFrame):
     def _render_tw(self, df: pd.DataFrame):
         for row in df.itertuples():
             pe_str = f"{row.pe:.1f}" if pd.notna(row.pe) else "—"
+            tag = "tw_up" if row.day_return > 0 else "tw_down"
             self._tree.insert("", "end", values=(
                 row.Index + 1,
                 row.ticker,
@@ -141,11 +146,11 @@ class TablePanel(ctk.CTkFrame):
                 f"{row.volume:,}",
                 f"{row.amount_ratio:.2f}x",
                 pe_str,
-                f"{row.fi_net/1e8:+.1f}",
-                f"{row.it_net/1e8:+.1f}",
+                f"{row.fi_net/1e8:+.2f}",
+                f"{row.it_net/1e8:+.2f}",
                 f"{row.margin_chg:+,}",
                 f"{row.rsi:.1f}",
-            ))
+            ), tags=(tag,))
 
     def update_data(self, df: pd.DataFrame):
         self._df = df
