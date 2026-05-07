@@ -1,7 +1,7 @@
 from unittest.mock import patch, MagicMock
 import pandas as pd
 import pytest
-from data.twse_fetcher import fetch_tw_all, _parse_twse_quote, _parse_twse_chips, _parse_twse_margin
+from data.twse_fetcher import fetch_tw_all, _parse_twse_quote, _parse_twse_chips, _parse_twse_margin, _parse_tpex_quote, _parse_tpex_chips, _parse_tpex_margin
 
 
 # ── Sample TWSE API fixtures ──────────────────────────────────────────────────
@@ -130,6 +130,27 @@ def test_parse_twse_margin_chg():
     assert "2330" in result
     # 融資今日餘額(3960) - 融資前日餘額(5000) = -1040
     assert result["2330"]["margin_chg"] == -1040
+
+
+def test_parse_tpex_quote_price():
+    result = _parse_tpex_quote(TPEX_QUOTE_OK)
+    assert "6488" in result
+    assert result["6488"]["price"] == 300.0
+    assert result["6488"]["day_return"] == pytest.approx(5.0 / (300.0 - 5.0), rel=1e-3)
+
+
+def test_parse_tpex_chips_fi_and_it():
+    result = _parse_tpex_chips(TPEX_CHIPS_OK)
+    assert "6488" in result
+    assert result["6488"]["fi_net"] == 1_500_000
+    assert result["6488"]["it_net"] == 300_000  # row[8] = "300,000" in aaData
+
+
+def test_parse_tpex_margin_chg():
+    result = _parse_tpex_margin(TPEX_MARGIN_OK)
+    assert "6488" in result
+    # today(row[6])=820 - prev(row[2])=1000 = -180
+    assert result["6488"]["margin_chg"] == -180
 
 
 # ── fetch_tw_all integration test ─────────────────────────────────────────────

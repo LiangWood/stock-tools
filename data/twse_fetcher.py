@@ -139,7 +139,7 @@ def _parse_tpex_quote(data: dict) -> dict[str, dict]:
             diff  = _to_float(row[3])
             prev  = price - diff
             day_r = (diff / prev) if prev != 0 else 0.0
-            vol   = _to_int(row[8]) if len(row) > 8 else 0
+            vol   = _to_int(row[9]) if len(row) > 9 else 0
             result[code] = {
                 "code": code, "name": name, "price": price,
                 "volume": vol, "day_return": day_r, "pe": None,
@@ -179,6 +179,7 @@ def _fetch_tw_ohlcv(
     tickers: list[str],
     progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> dict[str, Optional[pd.DataFrame]]:
+    # Thin alias so tests can patch this call without affecting data.fetcher
     return fetch_all(tickers, progress_callback)
 
 
