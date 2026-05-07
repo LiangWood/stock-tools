@@ -47,9 +47,22 @@ def _find_col(fields: list[str], *keywords: str) -> int:
 
 def _parse_twse_quote(data: dict) -> dict[str, dict]:
     result: dict[str, dict] = {}
-    if data.get("stat") != "OK" or not data.get("data"):
-        return result
-    fields = data.get("fields", [])
+    # API changed to nested tables format; support both old and new
+    if "tables" in data:
+        table = next(
+            (t for t in data["tables"]
+             if "證券代號" in t.get("fields", [])),
+            None,
+        )
+        if table is None:
+            return result
+        fields = table.get("fields", [])
+        rows = table.get("data", [])
+    else:
+        if data.get("stat") != "OK" or not data.get("data"):
+            return result
+        fields = data.get("fields", [])
+        rows = data["data"]
     try:
         ci  = _find_col(fields, "收盤")
         si  = _find_col(fields, "成交股數")
@@ -60,7 +73,7 @@ def _parse_twse_quote(data: dict) -> dict[str, dict]:
         logger.warning("TWSE quote field error: %s", e)
         return result
 
-    for row in data["data"]:
+    for row in rows:
         try:
             code  = str(row[0]).strip()
             name  = str(row[1]).strip()
@@ -89,7 +102,7 @@ def _parse_twse_chips(data: dict) -> dict[str, dict]:
     try:
         fi_i = next(
             i for i, f in enumerate(fields)
-            if "外陸資買賣超股數" in f and "不含" not in f and "投信" not in f
+            if "外陸資買賣超股數" in f and "投信" not in f
         )
         it_i = _find_col(fields, "投信買賣超股數")
     except (StopIteration, KeyError) as e:
@@ -109,17 +122,39 @@ def _parse_twse_chips(data: dict) -> dict[str, dict]:
 
 def _parse_twse_margin(data: dict) -> dict[str, dict]:
     result: dict[str, dict] = {}
-    if data.get("stat") != "OK" or not data.get("data"):
-        return result
-    fields = data.get("fields", [])
-    try:
-        today_i = _find_col(fields, "融資今日餘額")
-        prev_i  = _find_col(fields, "融資", "前日餘額")
-    except KeyError as e:
-        logger.warning("TWSE margin field error: %s", e)
-        return result
+    # API changed to nested tables format; support both old and new
+    if "tables" in data:
+        # New format: find table with per-stock margin data (has "代號" column)
+        table = next(
+            (t for t in data["tables"]
+             if "代號" in t.get("fields", [])),
+            None,
+        )
+        if table is None:
+            return result
+        fields = table.get("fields", [])
+        rows = table.get("data", [])
+        # Fields: [代號, 名稱, 買進, 賣出, 現金償還, 前日餘額, 今日餘額, ...]
+        # First 前日餘額 and 今日餘額 are for 融資
+        try:
+            today_i = _find_col(fields, "今日餘額")
+            prev_i  = _find_col(fields, "前日餘額")
+        except KeyError as e:
+            logger.warning("TWSE margin (tables) field error: %s", e)
+            return result
+    else:
+        if data.get("stat") != "OK" or not data.get("data"):
+            return result
+        fields = data.get("fields", [])
+        rows = data["data"]
+        try:
+            today_i = _find_col(fields, "融資今日餘額")
+            prev_i  = _find_col(fields, "融資", "前日餘額")
+        except KeyError as e:
+            logger.warning("TWSE margin field error: %s", e)
+            return result
 
-    for row in data["data"]:
+    for row in rows:
         try:
             code = str(row[0]).strip()
             chg  = _to_int(row[today_i]) - _to_int(row[prev_i])

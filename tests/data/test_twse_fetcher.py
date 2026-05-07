@@ -121,7 +121,7 @@ def test_parse_twse_quote_stat_not_ok():
 def test_parse_twse_chips_fi_and_it():
     result = _parse_twse_chips(TWSE_CHIPS_OK)
     assert "2330" in result
-    assert result["2330"]["fi_net"] == 79_000_000
+    assert result["2330"]["fi_net"] == 75_000_000  # 外陸資(不含外資自營商)，與實際 API 一致
     assert result["2330"]["it_net"] == 8_000_000
 
 
