@@ -2,13 +2,13 @@ import logging
 from typing import Optional, Callable
 import requests
 import pandas as pd
-import yfinance as yf
+
+from data.fetcher import fetch_all
 
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = 15
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
-_BATCH_SIZE = 100
 
 _TWSE_QUOTE  = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?response=json&type=ALLBUT0999"
 _TWSE_CHIPS  = "https://www.twse.com.tw/rwd/zh/fund/T86?response=json&selectType=ALL"
@@ -179,56 +179,33 @@ def _fetch_tw_ohlcv(
     tickers: list[str],
     progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> dict[str, Optional[pd.DataFrame]]:
-    results: dict[str, Optional[pd.DataFrame]] = {}
-    total = len(tickers)
-    for start in range(0, total, _BATCH_SIZE):
-        batch = tickers[start: start + _BATCH_SIZE]
-        try:
-            raw = yf.download(batch, period="6mo", progress=False, auto_adjust=True)
-            if isinstance(raw.columns, pd.MultiIndex):
-                for t in batch:
-                    try:
-                        df = raw.xs(t, axis=1, level=1).dropna(how="all")
-                        results[t] = df if not df.empty else None
-                    except KeyError:
-                        results[t] = None
-            else:
-                results[batch[0]] = raw if not raw.empty else None
-        except Exception as exc:
-            logger.warning("TW OHLCV batch %d failed: %s", start // _BATCH_SIZE, exc)
-            for t in batch:
-                results[t] = None
-        done = min(start + _BATCH_SIZE, total)
-        if progress_callback:
-            progress_callback(done, total)
-    return results
+    return fetch_all(tickers, progress_callback)
 
 
 def fetch_tw_all(
     progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> dict[str, dict]:
-    twse_quote = twse_chips = twse_margin = {}
-    tpex_quote = tpex_chips = tpex_margin = {}
-
-    for url, parser, target in [
-        (_TWSE_QUOTE,  _parse_twse_quote,  "twse_quote"),
-        (_TWSE_CHIPS,  _parse_twse_chips,  "twse_chips"),
-        (_TWSE_MARGIN, _parse_twse_margin, "twse_margin"),
-        (_TPEX_QUOTE,  _parse_tpex_quote,  "tpex_quote"),
-        (_TPEX_CHIPS,  _parse_tpex_chips,  "tpex_chips"),
-        (_TPEX_MARGIN, _parse_tpex_margin, "tpex_margin"),
+    fetched: dict[str, dict] = {}
+    for key, url, parser in [
+        ("twse_quote",  _TWSE_QUOTE,  _parse_twse_quote),
+        ("twse_chips",  _TWSE_CHIPS,  _parse_twse_chips),
+        ("twse_margin", _TWSE_MARGIN, _parse_twse_margin),
+        ("tpex_quote",  _TPEX_QUOTE,  _parse_tpex_quote),
+        ("tpex_chips",  _TPEX_CHIPS,  _parse_tpex_chips),
+        ("tpex_margin", _TPEX_MARGIN, _parse_tpex_margin),
     ]:
         try:
-            parsed = parser(_get(url))
+            fetched[key] = parser(_get(url))
         except Exception as exc:
-            logger.warning("TW fetch %s failed: %s", target, exc)
-            parsed = {}
-        if target == "twse_quote":    twse_quote  = parsed
-        elif target == "twse_chips":  twse_chips  = parsed
-        elif target == "twse_margin": twse_margin = parsed
-        elif target == "tpex_quote":  tpex_quote  = parsed
-        elif target == "tpex_chips":  tpex_chips  = parsed
-        elif target == "tpex_margin": tpex_margin = parsed
+            logger.warning("TW fetch %s failed: %s", key, exc)
+            fetched[key] = {}
+
+    twse_quote  = fetched["twse_quote"]
+    twse_chips  = fetched["twse_chips"]
+    twse_margin = fetched["twse_margin"]
+    tpex_quote  = fetched["tpex_quote"]
+    tpex_chips  = fetched["tpex_chips"]
+    tpex_margin = fetched["tpex_margin"]
 
     twse_tickers = [f"{c}.TW"  for c in twse_quote]
     tpex_tickers = [f"{c}.TWO" for c in tpex_quote]
