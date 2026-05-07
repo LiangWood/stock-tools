@@ -17,9 +17,12 @@ def _tech_metrics(ohlcv: pd.DataFrame | None) -> dict:
     defaults = {"ret_20d": 0.0, "amount_ratio": 1.0, "rsi": 50.0}
     if ohlcv is None or len(ohlcv) < 2:
         return defaults
-    close  = ohlcv["Close"].dropna()
-    volume = ohlcv["Volume"].dropna()
+    ohlcv_clean = ohlcv[["Close", "Volume"]].dropna()
+    close  = ohlcv_clean["Close"]
+    volume = ohlcv_clean["Volume"]
     n = len(close)
+    if n < 2:
+        return defaults
 
     ret_20d = float((close.iloc[-1] - close.iloc[-21]) / close.iloc[-21]) if n >= 21 else 0.0
 
