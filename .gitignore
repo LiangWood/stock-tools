@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+*.so
+
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# Cache & runtime data
+data/fund_cache.json
+data/tickers_cache.json
+
+# IDE & editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Claude Code internals
+.claude/settings.local.json
+.superpowers/
+
+# Logs
+*.log

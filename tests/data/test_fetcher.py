@@ -60,3 +60,17 @@ def test_progress_callback_is_called():
         fetch_all(tickers, progress_callback=lambda done, total: calls.append((done, total)))
     assert len(calls) > 0
     assert calls[-1][0] == len(tickers)
+
+
+def test_fetch_all_accepts_period_and_interval():
+    tickers = ["XLK", "XLF"]
+    with patch("data.fetcher.yf.download", return_value=_make_multi_download(tickers)) as download:
+        fetch_all(tickers, period="1y", interval="1wk")
+
+    download.assert_called_once_with(
+        tickers,
+        period="1y",
+        interval="1wk",
+        progress=False,
+        auto_adjust=True,
+    )

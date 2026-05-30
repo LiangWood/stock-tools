@@ -1,0 +1,1821 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>動能篩選器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- SF Pro via system fonts — no external CDN needed on macOS/iOS -->
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   DESIGN TOKENS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+:root {
+  --bg0:       #060b12;
+  --bg1:       #0d1421;
+  --bg2:       #111c2e;
+  --bg3:       #162135;
+  --border:    rgba(255,255,255,0.055);
+  --accent:    #00d4aa;
+  --accent-lo: rgba(0, 212, 170, 0.12);
+  --accent-hi: rgba(0, 212, 170, 0.28);
+  --text0:     #dde6f0;
+  --text1:     #5e7490;
+  --text2:     #2a3a50;
+  --up:        #22c55e;
+  --up-lo:     rgba(34, 197, 94, 0.14);
+  --down:      #ef4444;
+  --down-lo:   rgba(239, 68, 68, 0.14);
+  --hot:       #ef4444;
+  --cold:      #22c55e;
+  --gold:      #f59e0b;
+  --mono:      'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', system-ui, sans-serif;
+  --sans:      'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', system-ui, sans-serif;
+  --tc:        'SF Pro Display', -apple-system, BlinkMacSystemFont, 'PingFang TC', 'Noto Sans TC', sans-serif;
+  --radius:    5px;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   RESET & BASE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  background: var(--bg0);
+  color: var(--text0);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   APP SHELL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   HEADER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+#header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 20px;
+  height: 50px;
+  background: var(--bg1);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* Decorative top accent line */
+#header::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.5;
+}
+
+
+#logo {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#logo::before {
+  content: '◆';
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+#logo em {
+  font-style: normal;
+  color: var(--text1);
+  font-weight: 400;
+  font-size: 12px;
+}
+
+/* Separator */
+.vsep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+/* Universe tabs */
+#universe-tabs {
+  display: flex;
+  gap: 3px;
+}
+
+.tab {
+  padding: 5px 14px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text1);
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.tab:hover { color: var(--text0); border-color: var(--border); }
+
+.tab.active {
+  background: var(--accent-lo);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tab:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Right side controls */
+#header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+#status-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text1);
+}
+
+#status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text2);
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+
+#status-dot.idle    { background: var(--text2); }
+#status-dot.fetching { background: var(--gold); animation: blink 1s step-end infinite; }
+#status-dot.done    { background: var(--accent); }
+#status-dot.error   { background: var(--up); }
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+#refresh-btn {
+  padding: 6px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--accent);
+  background: var(--accent-lo);
+  color: var(--accent);
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  transition: background 0.15s;
+}
+
+#refresh-btn:hover { background: var(--accent-hi); }
+#refresh-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   BODY LAYOUT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+#body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   TABLE PANEL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+#table-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  position: relative;
+}
+
+/* ── Resizable divider ── */
+#divider {
+  width: 5px;
+  flex-shrink: 0;
+  background: var(--border);
+  cursor: col-resize;
+  position: relative;
+  transition: background 0.2s;
+  z-index: 10;
+}
+
+#divider::after {
+  content: '⋮';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text2);
+  font-size: 14px;
+  letter-spacing: -2px;
+  pointer-events: none;
+  transition: color 0.2s;
+  user-select: none;
+}
+
+#divider:hover,
+#divider.dragging {
+  background: var(--accent-lo);
+}
+
+#divider:hover::after,
+#divider.dragging::after {
+  color: var(--accent);
+}
+
+#table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 16px;
+  background: var(--bg1);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#count-badge {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text1);
+  white-space: nowrap;
+}
+
+#count-badge b { color: var(--text0); font-size: 13px; }
+
+#filter-box {
+  flex: 0 1 180px;
+  padding: 5px 10px;
+  background: var(--bg0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text0);
+  font-family: var(--mono);
+  font-size: 11px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+#filter-box::placeholder { color: var(--text2); }
+#filter-box:focus { border-color: var(--accent); }
+
+#updated-label {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text2);
+  white-space: nowrap;
+}
+
+/* ── Table ── */
+#table-wrap {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  position: relative;
+  min-height: 0;   /* 修復 flex 容器高度計算，確保捲軸可用 */
+}
+
+#table-wrap::-webkit-scrollbar { width: 5px; height: 5px; }
+#table-wrap::-webkit-scrollbar-track { background: var(--bg0); }
+#table-wrap::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
+#table-wrap::-webkit-scrollbar-thumb:hover { background: var(--text2); }
+
+#scores-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+/* Sticky header */
+#scores-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+#scores-table th {
+  background: var(--bg1);
+  color: var(--text1);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  position: relative;   /* needed for .col-rh absolute positioning */
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  text-align: right;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: color 0.12s;
+}
+
+#scores-table th.left { text-align: left; }
+#scores-table th.center { text-align: center; }
+#scores-table th:hover { color: var(--accent); }
+#scores-table th.sort-desc::after { content: ' ↓'; color: var(--accent); }
+#scores-table th.sort-asc::after  { content: ' ↑'; color: var(--accent); }
+
+/* ── Sticky (frozen) columns ── */
+/* 用 !important 確保 sticky 蓋過 th 的 position:relative */
+#scores-table th.col-sticky,
+#scores-table td.col-sticky {
+  position: sticky !important;
+  z-index: 4;
+}
+
+#scores-table thead th.col-sticky {
+  background: var(--bg1);
+  z-index: 5;
+}
+
+/* 所有 sticky td 必須使用不透明背景，否則滾動時後方欄位會穿透 */
+#scores-table tbody tr td.col-sticky                 { background: #060b12; }
+#scores-table tbody tr:nth-child(even) td.col-sticky { background: #0a0f16; }
+#scores-table tbody tr:hover td.col-sticky           { background: #111c2e; }
+#scores-table tbody tr.selected td.col-sticky        { background: #06191d; }
+
+/* 移除凍結欄位之間的內部 border，消除 1px 透出縫隙 */
+#scores-table th.col-sticky:not(.col-sticky-last),
+#scores-table td.col-sticky:not(.col-sticky-last) {
+  border-right: none;
+}
+
+/* 凍結區塊最右側加深色陰影作為視覺分隔 */
+#scores-table th.col-sticky-last,
+#scores-table td.col-sticky-last {
+  border-right: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 6px 0 12px rgba(0,0,0,0.6);
+}
+
+/* ── 右側凍結欄（SCORE）── */
+#scores-table th.col-sticky-right,
+#scores-table td.col-sticky-right {
+  position: sticky !important;
+  right: -8px;
+  z-index: 20;
+  background-clip: border-box;
+  isolation: isolate;
+  transform: translateZ(0);
+}
+
+/*
+  SCORE is sticky on the right. A shadow can paint behind scrolled cells in
+  table stacking contexts, so use an opaque same-color left border as a gutter.
+*/
+#scores-table thead th.col-sticky-right {
+  background: var(--bg1);
+  z-index: 30;
+  border-left: 8px solid #0d1421;
+  border-right: 14px solid #0d1421;
+  box-shadow: -6px 0 14px rgba(0,0,0,0.6);
+}
+#scores-table tbody tr td.col-sticky-right {
+  background: #060b12;
+  border-left: 8px solid #060b12;
+  border-right: 14px solid #060b12;
+  box-shadow: -4px 0 12px rgba(0,0,0,0.5);
+}
+#scores-table tbody tr:nth-child(even) td.col-sticky-right {
+  background: #0a0f16;
+  border-left-color: #0a0f16;
+  border-right-color: #0a0f16;
+}
+#scores-table tbody tr:hover td.col-sticky-right {
+  background: #111c2e;
+  border-left-color: #111c2e;
+  border-right-color: #111c2e;
+}
+#scores-table tbody tr.selected td.col-sticky-right {
+  background: #06191d;
+  border-left-color: #06191d;
+  border-right-color: #06191d;
+}
+
+/* ── Column resize handle ── */
+.col-rh {
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 2;
+  background: transparent;
+  transition: background 0.15s;
+}
+.col-rh:hover { background: rgba(0,212,170,0.45); }
+
+body.col-resizing,
+body.col-resizing * { cursor: col-resize !important; user-select: none !important; }
+
+/* flash feedback on dblclick auto-fit */
+@keyframes th-flash {
+  0%,100% { background: var(--bg1); }
+  50%      { background: rgba(0,212,170,0.18); }
+}
+.th-flash { animation: th-flash 0.3s ease; }
+
+/* Rows */
+#scores-table tbody tr {
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+#scores-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.015); }
+#scores-table tbody tr:hover { background: var(--bg2) !important; }
+#scores-table tbody tr.selected { background: rgba(0,212,170,0.07) !important; }
+#scores-table tbody tr.selected td.ticker-cell { color: var(--accent) !important; }
+
+/* Cells */
+#scores-table td {
+  padding: 7px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text0);
+  text-align: right;
+  border-right: 1px solid rgba(255,255,255,0.03);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+td.center { text-align: center; }
+td.left   { text-align: left; }
+
+td.rank-cell {
+  text-align: center;
+  color: var(--text2);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Top-5 rank highlight */
+tr[data-rank="1"] td.rank-cell,
+tr[data-rank="2"] td.rank-cell,
+tr[data-rank="3"] td.rank-cell { color: var(--gold); }
+
+td.ticker-cell {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 12px;
+  text-align: left;
+  letter-spacing: 0.2px;
+}
+
+td.name-cell {
+  font-family: var(--tc);
+  font-size: 11px;
+  color: var(--text1);
+  text-align: left;
+  max-width: 90px;
+}
+
+/* Percentage coloring */
+#scores-table td.up   { color: var(--up);   }
+#scores-table td.down { color: var(--down); }
+
+/* RSI zone */
+#scores-table td.rsi-hot  { color: var(--up);   }
+#scores-table td.rsi-cold { color: var(--down); }
+
+/* Score column — heat bar */
+td.score-cell {
+  position: relative;
+  overflow: hidden;
+}
+
+td.score-cell.col-sticky-right::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: inherit;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.score-fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--accent-lo), rgba(0,212,170,0.22));
+  transform-origin: left;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.score-text {
+  position: relative;
+  z-index: 2;
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+/* BREAKOUT 欄位：橘色熱力條（區別於 SCORE 的青色） */
+td.breakout-cell {
+  position: relative;
+  overflow: hidden;
+}
+.breakout-fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(245,158,11,0.10), rgba(245,158,11,0.25));
+  pointer-events: none;
+  z-index: 1;
+}
+.breakout-text {
+  position: relative;
+  z-index: 2;
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--gold);
+}
+
+/* Chips columns */
+#scores-table td.chips-up   { color: var(--up);   }
+#scores-table td.chips-down { color: var(--down); }
+#scores-table td.margin-up   { color: var(--down); }  /* margin increase = bearish */
+#scores-table td.margin-down { color: var(--up);   }
+
+/* Empty / initial state */
+#empty-msg {
+  display: none;
+  padding: 80px 24px;
+  text-align: center;
+  color: var(--text2);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+#empty-msg.show { display: block; }
+
+/* Row entrance animation (first 60 rows) */
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.row-animate {
+  animation: row-in 0.25s ease both;
+}
+
+.rank-changed td {
+  background-image: linear-gradient(90deg, rgba(0,212,170,0.08), transparent);
+}
+
+.rank-new {
+  animation: rank-new-in 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes rank-new-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   CHART PANEL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+#chart-panel {
+  width: 430px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg0);
+  transition: width 0.2s ease;
+  position: relative;
+}
+
+/* 收起時隱藏圖表，分隔線也跟著隱藏 */
+#chart-panel.closed,
+#chart-panel.closed + #divider,
+#divider + #chart-panel.closed { display: none; }
+
+#close-chart-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 30;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(6, 11, 18, 0.75);
+  backdrop-filter: blur(4px);
+  color: var(--text1);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  transition: opacity 0.18s, color 0.15s, background 0.15s;
+  pointer-events: none;
+}
+#chart-panel:hover #close-chart-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+#close-chart-btn:hover {
+  color: var(--text0);
+  background: rgba(239, 68, 68, 0.75);
+  border-color: transparent;
+}
+
+#chart-topbar {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  background: var(--bg1);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+#chart-topbar::-webkit-scrollbar { height: 3px; }
+#chart-topbar::-webkit-scrollbar-track { background: transparent; }
+#chart-topbar::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+
+#chart-symbol {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text0);
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+#chart-live-price {
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.chart-ctrl-group {
+  margin-left: auto;
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.ctrl {
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text1);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  transition: all 0.12s;
+}
+
+.ctrl:hover { border-color: var(--accent); color: var(--accent); }
+.ctrl.on { background: var(--accent-lo); border-color: var(--accent); color: var(--accent); }
+
+/* Divider between period and EMA buttons */
+.ctrl-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  align-self: center;
+  flex-shrink: 0;
+}
+
+/* Chart area */
+#chart-area {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+
+#chart-mount { width: 100%; height: 100%; }
+
+#chart-mount {
+  position: absolute;
+  inset: 0;
+}
+
+#chart-placeholder {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: none;
+  background: rgba(6, 11, 18, 0.6);
+}
+
+.ph-icon {
+  font-size: 36px;
+  opacity: 0.5;
+  filter: grayscale(0.3);
+}
+
+.ph-text {
+  font-size: 12px;
+  color: var(--text1);
+  letter-spacing: 0.5px;
+  text-align: center;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   LOADING OVERLAY（列表內，百分比進度條版）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+#overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(6, 11, 18, 0.88);
+  backdrop-filter: blur(6px);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#overlay.show { display: flex; }
+
+#overlay-pct {
+  font-family: var(--mono);
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: -1px;
+  line-height: 1;
+}
+
+.progress-track {
+  width: 240px;
+  height: 3px;
+  background: var(--bg3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+#overlay-text {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text1);
+  letter-spacing: 0.8px;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   ERROR TOAST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+#toast {
+  display: none;
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 18px;
+  background: #1a0f0f;
+  border: 1px solid var(--up);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--up);
+  z-index: 1000;
+  animation: toast-in 0.2s ease;
+}
+
+#toast.show { display: block; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── HEADER ── -->
+  <div id="header">
+    <div id="logo">MOMENTUM <em>/ SCREEN</em></div>
+    <div class="vsep"></div>
+
+    <div id="universe-tabs">
+      <button class="tab active" data-u="all">美股</button>
+      <button class="tab" data-u="tw">台股</button>
+    </div>
+
+    <div id="header-right">
+      <div id="status-badge">
+        <div id="status-dot" class="idle"></div>
+        <span id="status-text">尚未載入</span>
+      </div>
+      <button id="refresh-btn">刷新</button>
+    </div>
+  </div>
+
+  <!-- ── BODY ── -->
+  <div id="body">
+
+    <!-- Table Panel -->
+    <div id="table-panel">
+      <!-- Loading overlay (scoped to table panel) -->
+      <div id="overlay">
+        <div id="overlay-pct">0%</div>
+        <div class="progress-track"><div id="overlay-fill" class="progress-fill"></div></div>
+        <div id="overlay-text">連接中…</div>
+      </div>
+      <div id="table-toolbar">
+        <div id="count-badge"><b id="count-num">—</b> 檔</div>
+        <input id="filter-box" type="text" placeholder="搜尋代碼 / 名稱…" autocomplete="off" spellcheck="false">
+        <div id="updated-label">—</div>
+      </div>
+      <div id="table-wrap">
+        <table id="scores-table">
+          <thead id="t-head"></thead>
+          <tbody id="t-body"></tbody>
+        </table>
+        <div id="empty-msg" class="show">點擊「刷新」載入資料</div>
+      </div>
+    </div>
+
+    <!-- Resizable divider (hidden until chart is opened) -->
+    <div id="divider" title="拖曳調整寬度，雙擊重置" style="display:none"></div>
+
+    <!-- Chart Panel -->
+    <div id="chart-panel" class="closed">
+      <div id="chart-topbar">
+        <div id="chart-symbol">—</div>
+        <div id="chart-live-price"></div>
+        <div class="chart-ctrl-group">
+
+          <button class="ctrl" id="c-6mo"  data-period="6mo">6M</button>
+          <button class="ctrl" id="c-1y"   data-period="1y">1Y</button>
+          <button class="ctrl" id="c-5y"   data-period="5y">5Y</button>
+          <button class="ctrl on" id="c-max" data-period="max">全部</button>
+          <div class="ctrl-sep"></div>
+          <button class="ctrl on"  id="c-day">日K</button>
+          <button class="ctrl"     id="c-week">週K</button>
+          <div class="ctrl-sep"></div>
+          <button class="ctrl" id="c-ema20"  data-span="20">EMA20</button>
+          <button class="ctrl" id="c-ema50"  data-span="50">EMA50</button>
+          <button class="ctrl" id="c-ema120" data-span="120">EMA120</button>
+          <button class="ctrl" id="c-ema200" data-span="200">EMA200</button>
+        </div>
+      </div>
+      <button id="close-chart-btn" title="關閉圖表">✕</button>
+      <div id="chart-area">
+        <div id="chart-mount"></div>
+        <div id="chart-placeholder">
+          <div class="ph-icon">📈</div>
+          <div class="ph-text">點選左側個股查看走勢</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /body -->
+</div><!-- /app -->
+
+<!-- Error toast -->
+<div id="toast"></div>
+
+<!-- TradingView Lightweight Charts -->
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════════
+//  COLUMN DEFINITIONS
+// ══════════════════════════════════════════════════════════════
+const US_COLS = [
+  { key:'rank',          label:'RANK',       w:'52px',  align:'center', cls:'rank-cell',   fmt:v=>v??'—', sticky:true },
+  { key:'ticker',        label:'TICKER',     w:'78px',  align:'left',   cls:'ticker-cell', fmt:v=>v||'—',  sticky:true },
+  { key:'price',         label:'PRICE',      w:'80px',  align:'right',  fmt:v=>v!=null?`$${v.toFixed(2)}`:'—' },
+  { key:'day_return',    label:'當日%',      w:'68px',  align:'right',  cls:'pct',         fmt:pct },
+  { key:'vol_1d20d',     label:'量比日/20',  w:'76px',  align:'right',  fmt:v=>v!=null?`${v.toFixed(2)}×`:'—' },
+  { key:'ret_10d',       label:'10日%',      w:'68px',  align:'right',  cls:'pct',         fmt:pct },
+  { key:'ret_20d',       label:'20日%',      w:'68px',  align:'right',  cls:'pct',         fmt:pct },
+  { key:'vol_ratio',     label:'量比5/20',   w:'76px',  align:'right',  fmt:v=>v!=null?`${v.toFixed(2)}×`:'—' },
+  { key:'rs_vs_spy',     label:'RS/SPY(1M)', w:'82px',  align:'right',  cls:'pct',         fmt:pct },
+  { key:'rs_5d_vs_spy',  label:'RS/SPY(5D)', w:'82px',  align:'right',  cls:'pct',         fmt:pct },
+  { key:'rsi',           label:'RSI',        w:'58px',  align:'right',  cls:'rsi',         fmt:v=>v!=null?v.toFixed(1):'—' },
+  { key:'pe',            label:'P/E',    w:'60px', align:'right', fmt:v=>v!=null?v.toFixed(1):'—' },
+  { key:'peg_ratio',     label:'PEG',      w:'60px',  align:'right', fmt:v=>v!=null?v.toFixed(2):'—' },
+  { key:'breakout_score',label:'BREAKOUT', w:'90px',  align:'right', cls:'breakout', fmt:v=>v!=null?v.toFixed(1):'—' },
+  { key:'momentum_score',label:'SCORE',   w:'116px', align:'right', cls:'score', fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
+];
+
+const TW_COLS = [
+  { key:'rank',       label:'#',         w:'40px',  align:'center', cls:'rank-cell',   fmt:(v,i)=>i+1, sticky:true },
+  { key:'ticker',     label:'CODE',      w:'75px',  align:'left',   cls:'ticker-cell', fmt:v=>v||'—',  sticky:true },
+  { key:'name',       label:'名稱',      w:'88px',  align:'left',   cls:'name-cell',   fmt:v=>v||'—',  sticky:true },
+  { key:'price',      label:'PRICE',     w:'78px',  align:'right',  fmt:v=>v!=null?`NT$${v.toFixed(1)}`:'—' },
+  { key:'day_return', label:'日%',       w:'68px',  align:'right',  cls:'pct',         fmt:pct },
+  { key:'ret_20d',    label:'20日%',     w:'68px',  align:'right',  cls:'pct',         fmt:pct },
+  { key:'fi_net',     label:'外資(億)',  w:'80px',  align:'right',  cls:'chips',       fmt:v=>v!=null?`${(v/1e8).toFixed(2)}`:'—' },
+  { key:'it_net',     label:'投信(億)',  w:'80px',  align:'right',  cls:'chips',       fmt:v=>v!=null?`${(v/1e8).toFixed(2)}`:'—' },
+  { key:'margin_chg', label:'融資增減',  w:'80px',  align:'right',  cls:'margin',      fmt:v=>v!=null?(v>0?`+${v.toLocaleString()}`:v.toLocaleString()):'—' },
+  { key:'rsi',        label:'RSI',       w:'60px',  align:'right',  cls:'rsi',         fmt:v=>v!=null?v.toFixed(1):'—' },
+  { key:'tw_score',   label:'SCORE',     w:'90px',  align:'right',  cls:'score',       fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
+];
+
+function pct(v) {
+  if (v == null) return '—';
+  return (Math.abs(v) * 100).toFixed(2) + '%';  // 無 +/-，顏色表示方向
+}
+
+// ══════════════════════════════════════════════════════════════
+//  APP STATE
+// ══════════════════════════════════════════════════════════════
+const S = {
+  universe:        'all',
+  scores:          [],
+  filteredScores:  [],
+  sortKey:         null,
+  sortAsc:         false,
+  selectedTicker:  null,
+  ohlcvData:       null,
+  period:          'D',
+  historyPeriod:   'max',
+  ema:             { 20: false, 50: false, 120: false, 200: false },
+};
+
+let pollTimer    = null;
+let liveTimer    = null;
+let liveBusy     = false;
+let lwChart      = null;
+let candleSeries = null;
+let volSeries    = null;
+let emaSeries    = {};
+
+// ══════════════════════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════════════════════
+function cols()     { return S.universe === 'tw' ? TW_COLS : US_COLS; }
+function scoreKey() { return S.universe === 'tw' ? 'tw_score' : 'momentum_score'; }
+
+function applyFilter() {
+  const q = document.getElementById('filter-box').value.trim().toLowerCase();
+  S.filteredScores = q
+    ? S.scores.filter(r =>
+        (r.ticker||'').toLowerCase().includes(q) ||
+        (r.name||'').toLowerCase().includes(q))
+    : S.scores;
+}
+
+function sortedData() {
+  let data = [...S.filteredScores];
+  if (S.sortKey) {
+    data.sort((a, b) => {
+      let av = a[S.sortKey] ?? -Infinity;
+      let bv = b[S.sortKey] ?? -Infinity;
+      if (typeof av === 'string') return S.sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+      return S.sortAsc ? av - bv : bv - av;
+    });
+  }
+  return data;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TABLE RENDERING
+// ══════════════════════════════════════════════════════════════
+// Saved column widths per universe key (persists across sort re-renders)
+const _colW = {};
+let   _stickyMap = {};   // colIdx → left px (updated each renderHead call)
+
+function renderHead() {
+  const thead = document.getElementById('t-head');
+  const uKey  = S.universe;
+  const tr    = document.createElement('tr');
+
+  // Pre-compute sticky left offsets synchronously from saved/default widths
+  _stickyMap = {};
+  let stickyAcc = 0;
+  let lastStickyIdx = -1;
+  cols().forEach((col, idx) => {
+    if (!col.sticky) return;
+    _stickyMap[idx] = stickyAcc;
+    stickyAcc += (_colW[uKey]?.[idx] ?? parseInt(col.w)) || 0;
+    lastStickyIdx = idx;
+  });
+
+  cols().forEach((col, idx) => {
+    const th = document.createElement('th');
+    th.dataset.colIdx = idx;
+    th.dataset.colKey = col.key;
+
+    // Restore saved width or use default
+    const saved = _colW[uKey]?.[idx];
+    th.style.width = saved ? saved + 'px' : col.w;
+
+    if (col.align === 'left')   th.classList.add('left');
+    if (col.align === 'center') th.classList.add('center');
+    if (col.sticky) {
+      th.classList.add('col-sticky');
+      th.style.left = _stickyMap[idx] + 'px';
+      if (idx === lastStickyIdx) th.classList.add('col-sticky-last');
+    }
+    if (col.sticky_right) {
+      th.classList.add('col-sticky-right');
+      th.style.right = '-8px';
+    }
+
+    // Sort label (text only – handle click fires after resize check)
+    const label = document.createTextNode(col.label);
+    th.appendChild(label);
+
+    if (S.sortKey === col.key)
+      th.classList.add(S.sortAsc ? 'sort-asc' : 'sort-desc');
+
+    // Sort click (skip when clicking the resize handle)
+    th.addEventListener('click', (e) => {
+      if (e.target.classList.contains('col-rh')) return;
+      if (col.key === 'rank') {
+        // 點 RANK 恢復預設動能分數排序
+        S.sortKey = scoreKey();
+        S.sortAsc = false;
+      } else if (S.sortKey === col.key) {
+        S.sortAsc = !S.sortAsc;
+      } else {
+        S.sortKey = col.key;
+        S.sortAsc = false;
+      }
+      renderHead(); renderBody();
+    });
+
+    // Resize handle
+    const rh = document.createElement('div');
+    rh.className = 'col-rh';
+
+    // ── Drag to resize ──
+    rh.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const startX   = e.clientX;
+      const startW   = th.offsetWidth;
+      document.body.classList.add('col-resizing');
+
+      const onMove = (e) => {
+        const w = Math.max(36, startW + e.clientX - startX);
+        th.style.width = w + 'px';
+        if (!_colW[uKey]) _colW[uKey] = {};
+        _colW[uKey][idx] = w;
+        if (col.sticky) updateStickyLefts();
+      };
+      const onUp = () => {
+        document.body.classList.remove('col-resizing');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    // ── Double-click to auto-fit ──
+    rh.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      const colIdx = parseInt(th.dataset.colIdx);
+
+      // Measure th label width
+      let max = th.scrollWidth;
+
+      // Measure all td cells in this column
+      document.querySelectorAll('#t-body tr').forEach(row => {
+        const td = row.querySelectorAll('td')[colIdx];
+        if (!td) return;
+        // For score cells, measure the inner span
+        const inner = td.querySelector('.score-text');
+        max = Math.max(max, inner ? inner.scrollWidth + 20 : td.scrollWidth);
+      });
+
+      const w = max + 18;  // content + padding
+      th.style.width = w + 'px';
+      if (!_colW[uKey]) _colW[uKey] = {};
+      _colW[uKey][idx] = w;
+
+      // Flash feedback
+      th.classList.add('th-flash');
+      th.addEventListener('animationend', () => th.classList.remove('th-flash'), { once: true });
+    });
+
+    th.appendChild(rh);
+    tr.appendChild(th);
+  });
+  thead.innerHTML = '';
+  thead.appendChild(tr);
+}
+
+function renderBody(opts = {}) {
+  const animate = opts.animate === true;
+  applyFilter();
+  const data = sortedData();
+  const maxScore = Math.max(...data.map(r => r[scoreKey()] ?? 0), 0.001);
+  const theCols = cols();
+  const tbody = document.getElementById('t-body');
+  const oldRects = new Map();
+  if (animate) {
+    document.querySelectorAll('#t-body tr').forEach(tr => {
+      if (tr.dataset.ticker) oldRects.set(tr.dataset.ticker, tr.getBoundingClientRect());
+    });
+  }
+  const frag = document.createDocumentFragment();
+
+  data.forEach((row, i) => {
+    const tr = document.createElement('tr');
+    tr.dataset.ticker = row.ticker;
+    tr.dataset.rank = i + 1;
+    if (S.selectedTicker === row.ticker) tr.classList.add('selected');
+    if (!animate && i < 60) { tr.classList.add('row-animate'); tr.style.animationDelay = `${i * 12}ms`; }
+    if (animate && !oldRects.has(row.ticker) && i < 80) tr.classList.add('rank-new');
+    tr.addEventListener('click', () => pickTicker(row.ticker));
+
+    theCols.forEach((col, idx) => {
+      const td = document.createElement('td');
+      const val = row[col.key];
+      const display = col.fmt(val, i);
+
+      if (col.cls === 'score') {
+        const pctFill = maxScore > 0 ? Math.min(100, (val / maxScore) * 100) : 0;
+        td.classList.add('score-cell');
+        td.innerHTML = `<div class="score-fill" style="width:${pctFill}%"></div><span class="score-text">${display}</span>`;
+      } else if (col.cls === 'breakout') {
+        const pctFill = val != null ? Math.min(100, val) : 0;   // breakout_score 本身就是 0–100
+        td.classList.add('breakout-cell');
+        td.innerHTML = `<div class="breakout-fill" style="width:${pctFill}%"></div><span class="breakout-text">${display}</span>`;
+      } else {
+        td.textContent = display;
+      }
+
+      if (col.cls) td.classList.add(col.cls);
+
+      // Percentage coloring
+      if (col.cls === 'pct' && val != null) {
+        if (val > 0) td.classList.add('up');
+        else if (val < 0) td.classList.add('down');
+      }
+
+      // Price column: color based on day_return direction
+      if (col.key === 'price' && row.day_return != null) {
+        if (row.day_return > 0)      td.classList.add('up');
+        else if (row.day_return < 0) td.classList.add('down');
+      }
+
+      // Chips coloring
+      if (col.cls === 'chips' && val != null) {
+        if (val > 0) td.classList.add('chips-up');
+        else if (val < 0) td.classList.add('chips-down');
+      }
+
+      // Margin coloring (inverted)
+      if (col.cls === 'margin' && val != null) {
+        if (val > 0) td.classList.add('margin-up');
+        else if (val < 0) td.classList.add('margin-down');
+      }
+
+      // RSI zone coloring removed per user request
+
+      if (col.align === 'left')   td.classList.add('left');
+      if (col.align === 'center') td.classList.add('center');
+      if (col.sticky) {
+        td.classList.add('col-sticky');
+        td.style.left = (_stickyMap[idx] ?? 0) + 'px';
+        const lastIdx = Math.max(...Object.keys(_stickyMap).map(Number));
+        if (idx === lastIdx) td.classList.add('col-sticky-last');
+      }
+      if (col.sticky_right) {
+        td.classList.add('col-sticky-right');
+        td.style.right = '-8px';
+      }
+
+      tr.appendChild(td);
+    });
+    frag.appendChild(tr);
+  });
+
+  tbody.innerHTML = '';
+  tbody.appendChild(frag);
+
+  if (animate && oldRects.size) {
+    requestAnimationFrame(() => {
+      const moved = [];
+      tbody.querySelectorAll('tr').forEach(tr => {
+        const oldRect = oldRects.get(tr.dataset.ticker);
+        if (!oldRect) return;
+        const newRect = tr.getBoundingClientRect();
+        const dy = oldRect.top - newRect.top;
+        if (Math.abs(dy) < 1) return;
+        tr.style.transition = 'none';
+        tr.style.transform = `translateY(${dy}px)`;
+        moved.push(tr);
+      });
+
+      requestAnimationFrame(() => {
+        moved.forEach(tr => {
+          tr.classList.add('rank-changed');
+          tr.style.transition = 'transform 520ms cubic-bezier(0.2, 0.8, 0.2, 1), background 520ms ease';
+          tr.style.transform = 'translateY(0)';
+        });
+        setTimeout(() => {
+          moved.forEach(tr => {
+            tr.style.transition = '';
+            tr.style.transform = '';
+            tr.classList.remove('rank-changed');
+          });
+        }, 620);
+      });
+    });
+  }
+
+  document.getElementById('count-num').textContent = data.length;
+  const empty = document.getElementById('empty-msg');
+  empty.classList.toggle('show', data.length === 0 && S.scores.length === 0);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  CHART
+// ══════════════════════════════════════════════════════════════
+function initChart() {
+  const mount = document.getElementById('chart-mount');
+  const area  = document.getElementById('chart-area');
+
+  if (typeof LightweightCharts === 'undefined') {
+    document.querySelector('.ph-text').textContent = '圖表庫未載入（請確認網路連線）';
+    return;
+  }
+
+  lwChart = LightweightCharts.createChart(mount, {
+    width:  mount.clientWidth,
+    height: mount.clientHeight,
+    layout: {
+      background:  { color: '#060b12' },
+      textColor:   '#5e7490',
+    },
+    grid: {
+      vertLines: { color: 'rgba(255,255,255,0.025)' },
+      horzLines: { color: 'rgba(255,255,255,0.025)' },
+    },
+    crosshair: {
+      mode: LightweightCharts.CrosshairMode.Normal,
+      vertLine: { color: 'rgba(0,212,170,0.35)', labelBackgroundColor: '#0d1421' },
+      horzLine: { color: 'rgba(0,212,170,0.35)', labelBackgroundColor: '#0d1421' },
+    },
+    timeScale:  { borderColor: 'rgba(255,255,255,0.05)', timeVisible: true },
+    rightPriceScale: { borderColor: 'rgba(255,255,255,0.05)' },
+  });
+
+  candleSeries = lwChart.addCandlestickSeries({
+    upColor:        '#22c55e',
+    downColor:      '#ef4444',
+    borderUpColor:  '#22c55e',
+    borderDownColor:'#ef4444',
+    wickUpColor:    '#22c55e',
+    wickDownColor:  '#ef4444',
+  });
+
+  // Shrink main price scale to leave room for volume at bottom
+  lwChart.priceScale('right').applyOptions({
+    scaleMargins: { top: 0.04, bottom: 0.22 },
+  });
+
+  // Volume histogram on its own scale
+  volSeries = lwChart.addHistogramSeries({
+    priceFormat:      { type: 'volume' },
+    priceScaleId:     'vol',
+    lastValueVisible: false,
+    priceLineVisible: false,
+  });
+  lwChart.priceScale('vol').applyOptions({
+    scaleMargins: { top: 0.8, bottom: 0 },
+  });
+
+  // Resize
+  const ro = new ResizeObserver(() => {
+    lwChart.applyOptions({ width: mount.clientWidth, height: mount.clientHeight });
+  });
+  ro.observe(area);
+}
+
+function ohlcvToCandles(data) {
+  if (!data || !Array.isArray(data.dates)) return [];
+  return data.dates.map((d, i) => ({
+    time:  d,
+    open:  data.open[i],
+    high:  data.high[i],
+    low:   data.low[i],
+    close: data.close[i],
+    _vol:  data.volume?.[i] ?? 0,
+  })).filter(c => c.open && c.close);
+}
+
+function toWeekly(candles) {
+  const wk = {};
+  candles.forEach(c => {
+    const dt  = new Date(c.time);
+    const dow = dt.getUTCDay();
+    const mon = new Date(dt);
+    mon.setUTCDate(dt.getUTCDate() - (dow === 0 ? 6 : dow - 1));
+    const key = mon.toISOString().slice(0, 10);
+    if (!wk[key]) wk[key] = { time: key, open: c.open, high: c.high, low: c.low, close: c.close, _vol: 0 };
+    else {
+      wk[key].high  = Math.max(wk[key].high, c.high);
+      wk[key].low   = Math.min(wk[key].low,  c.low);
+      wk[key].close = c.close;
+    }
+    wk[key]._vol += c._vol;
+  });
+  return Object.values(wk).sort((a, b) => a.time.localeCompare(b.time));
+}
+
+function calcEMA(candles, span) {
+  const k = 2 / (span + 1);
+  let e = candles[0]?.close ?? 0;
+  return candles.map((c, i) => {
+    e = i === 0 ? c.close : c.close * k + e * (1 - k);
+    return { time: c.time, value: e };
+  });
+}
+
+const EMA_COLORS = { 20: '#f59e0b', 50: '#38bdf8', 120: '#c084fc', 200: '#ffffff' };
+
+function renderChart() {
+  if (!S.ohlcvData) return;
+  const raw     = ohlcvToCandles(S.ohlcvData);
+  const candles = S.period === 'W' ? toWeekly(raw) : raw;
+
+  candleSeries.setData(candles);
+
+  // Volume histogram
+  if (volSeries) {
+    volSeries.setData(candles.map(c => ({
+      time:  c.time,
+      value: c._vol,
+      color: c.close >= c.open ? 'rgba(34,197,94,0.55)' : 'rgba(239,68,68,0.55)',
+    })));
+  }
+
+  // Remove old EMA series
+  Object.values(emaSeries).forEach(s => lwChart.removeSeries(s));
+  emaSeries = {};
+
+  // Add active EMA series
+  Object.entries(S.ema).forEach(([span, on]) => {
+    if (!on) return;
+    const n = parseInt(span);
+    if (candles.length < n) return;
+    const s = lwChart.addLineSeries({
+      color:              EMA_COLORS[n] || '#aaa',
+      lineWidth:          1.5,
+      priceLineVisible:   false,
+      lastValueVisible:   true,
+      crosshairMarkerVisible: false,
+    });
+    s.setData(calcEMA(candles, n));
+    emaSeries[span] = s;
+  });
+
+  lwChart.timeScale().fitContent();
+
+  // Live price display
+  const last = candles[candles.length - 1];
+  if (last) {
+    const chg    = last.close - last.open;
+    const chgPct = (chg / last.open * 100).toFixed(2);
+    const col    = chg >= 0 ? 'var(--up)' : 'var(--down)';
+    const sign   = chg >= 0 ? '+' : '';
+    document.getElementById('chart-live-price').innerHTML =
+      `<span style="color:${col};font-family:var(--mono);font-size:12px;">${last.close.toFixed(2)} (${sign}${chgPct}%)</span>`;
+  }
+}
+
+async function pickTicker(ticker, period) {
+  if (!ticker) return;
+  const hp = period ?? S.historyPeriod;
+  S.selectedTicker = ticker;
+
+  // 自動展開圖表（如果是關閉狀態）
+  const chartPanel = document.getElementById('chart-panel');
+  const divider    = document.getElementById('divider');
+  if (chartPanel.classList.contains('closed')) {
+    chartPanel.classList.remove('closed');
+    if (divider) divider.style.display = '';
+  }
+
+  document.querySelectorAll('#t-body tr').forEach(tr => {
+    tr.classList.toggle('selected', tr.dataset.ticker === ticker);
+  });
+  document.getElementById('chart-symbol').textContent = ticker;
+  document.getElementById('chart-live-price').textContent = '';
+
+  const ph = document.getElementById('chart-placeholder');
+  ph.style.display = 'flex';
+  document.querySelector('.ph-text').textContent = '載入中…';
+
+  try {
+    const url = `/api/history?ticker=${encodeURIComponent(ticker)}&period=${hp}`;
+    const r = await fetch(url);
+    const data = await r.json();
+    if (!r.ok || !data.dates) {
+      document.querySelector('.ph-text').textContent = '無 K 線資料';
+      return;
+    }
+    S.ohlcvData = data;
+    ph.style.display = 'none';
+    document.querySelector('.ph-text').textContent = '點選左側個股查看走勢';
+    renderChart();
+  } catch(e) {
+    document.querySelector('.ph-text').textContent = '載入失敗，請重試';
+    console.warn('OHLCV fetch failed', e);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  STATUS & FETCH
+// ══════════════════════════════════════════════════════════════
+function setStatus(cls, text) {
+  document.getElementById('status-dot').className = cls;
+  document.getElementById('status-text').textContent = text;
+}
+
+function lockUI(lock) {
+  document.getElementById('refresh-btn').disabled = lock;
+  document.querySelectorAll('.tab').forEach(b => { b.disabled = lock; });
+}
+
+// ── Progress animation (lerp) ──
+const _ov = { cur: 0, target: 0, timer: null };
+function _tickOv() {
+  const d = _ov.target - _ov.cur;
+  if (Math.abs(d) < 0.2) { _ov.cur = _ov.target; clearInterval(_ov.timer); _ov.timer = null; }
+  else { _ov.cur += d * 0.10; }
+  document.getElementById('overlay-pct').textContent  = Math.round(_ov.cur) + '%';
+  document.getElementById('overlay-fill').style.width = _ov.cur + '%';
+}
+function _animTo(pct) {
+  _ov.target = pct;
+  if (!_ov.timer) _ov.timer = setInterval(_tickOv, 16);
+}
+
+function showOverlay(text, pct) {
+  const p = pct ?? 0;
+  document.getElementById('overlay-text').textContent = text;
+  document.getElementById('overlay').classList.add('show');
+  _animTo(p);
+}
+
+function hideOverlay() {
+  if (_ov.timer) { clearInterval(_ov.timer); _ov.timer = null; }
+  _ov.cur = 0; _ov.target = 0;
+  document.getElementById('overlay').classList.remove('show');
+}
+
+function progressPct(prog, status) {
+  if (!prog) return status === 'done' ? 100 : 5;
+  const m = prog.match(/(\d+)\/(\d+)/);
+  if (m) {
+    const ratio = parseInt(m[1]) / parseInt(m[2]);
+    if (prog.includes('抓取中')) return 5 + Math.round(ratio * 68);   // 5–73%
+    if (prog.includes('基本面')) return 80 + Math.round(ratio * 18);  // 80–98%
+  }
+  if (prog.includes('動能') || prog.includes('籌碼')) return 75;
+  if (prog.includes('K 線'))  return 78;
+  if (prog.includes('基本面')) return 80;
+  if (status === 'scores_ready') return 79;
+  if (status === 'done') return 100;
+  return 5;
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 4000);
+}
+
+async function startFetch() {
+  stopLiveRefresh();
+  lockUI(true);
+  showOverlay('連接中…');
+  setStatus('fetching', '啟動中…');
+  try {
+    const r = await fetch(`/api/fetch?universe=${S.universe}`);
+    if (r.status === 409) { hideOverlay(); lockUI(false); showToast('正在抓取中，請稍候'); return; }
+    if (!r.ok) throw new Error('fetch failed');
+    pollTimer = setInterval(pollState, 900);
+  } catch(e) {
+    hideOverlay(); lockUI(false);
+    setStatus('error', '連線失敗');
+    showToast('無法連線至伺服器');
+  }
+}
+
+async function pollState() {
+  try {
+    const r = await fetch('/api/state');
+    const s = await r.json();
+    const rawLabel = s.progress || '處理中…';
+    const pct      = progressPct(s.progress, s.status);
+
+    // 把 "抓取中 300/529" 換算為 "抓取中 57/100"（讓分母對應最終結果數）
+    function toDisplayLabel(prog) {
+      const m = prog.match(/抓取中\s+(\d+)\/(\d+)/);
+      if (m) {
+        const virtual = Math.min(100, Math.round(parseInt(m[1]) / parseInt(m[2]) * 100));
+        return `抓取中 ${virtual}/100`;
+      }
+      return prog;
+    }
+    const label = toDisplayLabel(rawLabel);
+
+    if (s.status === 'fetching' || s.status === 'scores_ready') {
+      setStatus('fetching', label);
+      showOverlay(label, pct);
+
+    } else if (s.status === 'done') {
+      clearInterval(pollTimer); pollTimer = null;
+      try { await loadScores(); } catch(e) { console.warn('loadScores failed', e); }
+      hideOverlay(); lockUI(false);
+      setStatus('done', `更新 ${s.last_updated}`);
+      document.getElementById('updated-label').textContent = `更新：${s.last_updated}`;
+      startLiveRefresh();
+
+    } else if (s.status === 'error') {
+      clearInterval(pollTimer); pollTimer = null;
+      hideOverlay(); lockUI(false);
+      setStatus('error', '資料錯誤');
+      showToast(`錯誤：${s.error}`);
+    }
+  } catch(_) { /* transient */ }
+}
+
+async function loadScores(opts = {}) {
+  const d = opts.data ?? await (async () => {
+    const r = await fetch('/api/scores');
+    return await r.json();
+  })();
+  S.scores = d.scores || [];
+  if (opts.resetSort !== false) S.sortKey = null;
+  applyFilter();
+  renderHead();
+  renderBody({ animate: opts.animate === true });
+}
+
+function stopLiveRefresh() {
+  if (liveTimer) clearInterval(liveTimer);
+  liveTimer = null;
+}
+
+function startLiveRefresh() {
+  stopLiveRefresh();
+  if (S.universe === 'tw') return;
+  liveTimer = setInterval(refreshLivePrices, 15 * 60 * 1000);   // 15 分鐘自動更新
+}
+
+async function refreshLivePrices() {
+  if (liveBusy || S.universe === 'tw') return;
+  liveBusy = true;
+  setStatus('fetching', '即時更新中…');
+  try {
+    const r = await fetch(`/api/live-refresh?universe=${S.universe}`);
+    if (r.status === 409) return;
+    if (!r.ok) throw new Error('live refresh failed');
+    const data = await r.json();
+    await loadScores({ data, animate: true, resetSort: false });
+    document.getElementById('updated-label').textContent = `更新：${data.last_updated}`;
+    setStatus('done', `更新 ${data.last_updated}`);
+    if (S.selectedTicker) {
+      const row = S.scores.find(r => r.ticker === S.selectedTicker);
+      if (row) document.getElementById('chart-live-price').innerHTML =
+        `<span style="color:${row.day_return >= 0 ? 'var(--up)' : 'var(--down)'};font-family:var(--mono);font-size:12px;">${row.price.toFixed(2)} (${pct(row.day_return)})</span>`;
+    }
+  } catch(e) {
+    console.warn('live refresh failed', e);
+    setStatus('error', '即時更新失敗');
+  } finally {
+    liveBusy = false;
+  }
+}
+
+async function bootstrapExistingScores() {
+  try {
+    const r = await fetch('/api/state');
+    const s = await r.json();
+    if (!s.count || s.status === 'fetching') return;
+    S.universe = s.universe || S.universe;
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.u === S.universe);
+    });
+    await loadScores({ resetSort: true });
+    setStatus(s.status === 'error' ? 'error' : 'done', s.last_updated ? `更新 ${s.last_updated}` : '已載入');
+    document.getElementById('updated-label').textContent = s.last_updated ? `更新：${s.last_updated}` : '—';
+    if (s.status === 'done') startLiveRefresh();
+  } catch(e) {
+    console.warn('bootstrap scores failed', e);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  EVENT WIRING
+// ══════════════════════════════════════════════════════════════
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    stopLiveRefresh();
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    S.universe = btn.dataset.u;
+    S.scores = []; S.filteredScores = [];
+    S.selectedTicker = null; S.ohlcvData = null;
+    renderHead(); renderBody();
+    document.getElementById('chart-symbol').textContent    = '—';
+    document.getElementById('chart-live-price').textContent = '';
+    document.getElementById('chart-placeholder').style.display = '';
+    if (candleSeries) candleSeries.setData([]);
+    Object.values(emaSeries).forEach(s => lwChart.removeSeries(s));
+    emaSeries = {};
+  });
+});
+
+document.getElementById('refresh-btn').addEventListener('click', startFetch);
+
+document.getElementById('filter-box').addEventListener('input', () => {
+  renderBody();
+});
+
+// History range buttons (re-fetch on change)
+['c-6mo','c-1y','c-5y','c-max'].forEach(id => {
+  const btn = document.getElementById(id);
+  btn.addEventListener('click', () => {
+    S.historyPeriod = btn.dataset.period;
+    document.querySelectorAll('[data-period]').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    if (S.selectedTicker) pickTicker(S.selectedTicker, S.historyPeriod);
+  });
+});
+
+// Candlestick period buttons
+document.getElementById('c-day').addEventListener('click', () => {
+  S.period = 'D';
+  document.getElementById('c-day').classList.add('on');
+  document.getElementById('c-week').classList.remove('on');
+  renderChart();
+});
+
+document.getElementById('c-week').addEventListener('click', () => {
+  S.period = 'W';
+  document.getElementById('c-week').classList.add('on');
+  document.getElementById('c-day').classList.remove('on');
+  renderChart();
+});
+
+// EMA buttons
+['c-ema20','c-ema50','c-ema120','c-ema200'].forEach(id => {
+  const btn  = document.getElementById(id);
+  const span = parseInt(btn.dataset.span);
+  btn.addEventListener('click', () => {
+    S.ema[span] = !S.ema[span];
+    btn.classList.toggle('on', S.ema[span]);
+    renderChart();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════════
+initChart();
+renderHead();
+renderBody();
+bootstrapExistingScores();
+
+// ── 關閉 / 展開圖表 ──
+document.getElementById('close-chart-btn').addEventListener('click', () => {
+  const panel   = document.getElementById('chart-panel');
+  const divider = document.getElementById('divider');
+  panel.classList.add('closed');
+  if (divider) divider.style.display = 'none';
+  S.selectedTicker = null;
+  document.querySelectorAll('#t-body tr').forEach(tr => tr.classList.remove('selected'));
+});
+
+// ── Sticky column left-offset updater ──
+function updateStickyLefts() {
+  const ths = [...document.querySelectorAll('#t-head th')];
+  // Compute cumulative left for each sticky th
+  const lefts = [];
+  let acc = 0;
+  ths.forEach((th, i) => {
+    if (th.classList.contains('col-sticky')) {
+      lefts[i] = acc;
+      acc += th.offsetWidth;
+    }
+  });
+
+  // Apply to th
+  ths.forEach((th, i) => {
+    if (th.classList.contains('col-sticky')) {
+      th.style.left = lefts[i] + 'px';
+    }
+  });
+
+  // Determine last sticky index for shadow
+  const lastIdx = [...ths].reduce((last, th, i) =>
+    th.classList.contains('col-sticky') ? i : last, -1);
+
+  // Apply to all td rows
+  document.querySelectorAll('#t-body tr').forEach(row => {
+    const tds = [...row.querySelectorAll('td')];
+    tds.forEach((td, i) => {
+      if (td.classList.contains('col-sticky')) {
+        td.style.left = (lefts[i] ?? 0) + 'px';
+        td.classList.toggle('col-sticky-last', i === lastIdx);
+      }
+    });
+  });
+
+  // Shadow on last sticky th
+  ths.forEach((th, i) => {
+    th.classList.toggle('col-sticky-last', th.classList.contains('col-sticky') && i === lastIdx);
+  });
+}
+
+// ── Resizable divider ──
+;(function() {
+  const divider    = document.getElementById('divider');
+  const chartPanel = document.getElementById('chart-panel');
+  const MIN_W = 260, MAX_W = 900, DEFAULT_W = 430;
+  let dragging = false, startX = 0, startW = 0;
+
+  divider.addEventListener('mousedown', e => {
+    dragging = true;
+    startX   = e.clientX;
+    startW   = chartPanel.offsetWidth;
+    divider.classList.add('dragging');
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor     = 'col-resize';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const delta = startX - e.clientX;
+    const w = Math.min(MAX_W, Math.max(MIN_W, startW + delta));
+    chartPanel.style.width = w + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    divider.classList.remove('dragging');
+    document.body.style.userSelect = '';
+    document.body.style.cursor     = '';
+  });
+
+  divider.addEventListener('dblclick', () => {
+    chartPanel.style.width = DEFAULT_W + 'px';
+  });
+})();
+</script>
+</body>
+</html>

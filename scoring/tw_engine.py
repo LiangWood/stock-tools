@@ -71,8 +71,10 @@ def compute_tw_scores(ticker_data: dict) -> pd.DataFrame:
 
     df["tw_score"] = ranks[metric_cols].values @ weights
 
-    return (
+    result = (
         df.sort_values("tw_score", ascending=False)
         .head(20)
         .reset_index(drop=True)
     )
+    result["rank"] = range(1, len(result) + 1)
+    return result
