@@ -7,13 +7,13 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 # CTkFrame internally uses self._canvas; use self._mpl_canvas to avoid collision
 matplotlib.rcParams["font.family"] = ["Heiti TC", "STHeiti", "PingFang SC", "DejaVu Sans"]
 
-_BG = "#2b2b2b"
-_MUTED = "#888888"
-_WHITE = "#ffffff"
-_BORDER = "#444444"
-_GREEN = "#00c853"
-_RED = "#ff5252"
-_EMA_COLORS = {20: "#f0c040", 50: "#40c0ff", 120: "#cc66ff"}
+_BG = "#060b12"
+_MUTED = "#5e7490"
+_WHITE = "#dde6f0"
+_BORDER = "#162135"
+_GREEN = "#22c55e"
+_RED = "#ef4444"
+_EMA_COLORS = {20: "#f59e0b", 50: "#38bdf8", 120: "#c084fc"}
 
 
 class ChartPanel(ctk.CTkFrame):

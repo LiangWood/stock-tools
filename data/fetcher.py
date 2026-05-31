@@ -10,8 +10,8 @@ import yfinance as yf
 
 logger = logging.getLogger(__name__)
 
-_BATCH_SIZE  = 100
-_MAX_WORKERS = 4   # 並行下載批次數（過高會被 Yahoo Finance rate-limit）
+# yfinance 1.x 批次下載有 bug（AttributeError on .lower()），改用單檔平行下載。
+_MAX_WORKERS = 20
 
 
 def fetch_all(
@@ -20,49 +20,37 @@ def fetch_all(
     interval: str = "1d",
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> dict[str, pd.DataFrame | None]:
-    total   = len(tickers)
-    batches = [tickers[i: i + _BATCH_SIZE] for i in range(0, total, _BATCH_SIZE)]
-
+    total = len(tickers)
     results: dict[str, pd.DataFrame | None] = {}
     done_count = 0
     lock = threading.Lock()
 
-    def _fetch_batch(batch: list[str]) -> dict[str, pd.DataFrame | None]:
+    def _fetch_one(ticker: str) -> tuple[str, pd.DataFrame | None]:
         try:
-            raw = yf.download(
-                batch,
+            # 用 Ticker.history() 避免 yf.download() 在多線程下的 AttributeError bug
+            df = yf.Ticker(ticker).history(
                 period=period,
                 interval=interval,
-                progress=False,
                 auto_adjust=True,
+                raise_errors=False,
             )
-            return _parse(raw, batch)
+            if df is None or df.empty:
+                return ticker, None
+            # history() 欄位為 Open/High/Low/Close/Volume，無需處理 MultiIndex
+            df = df.dropna(how="all")
+            return ticker, (df if not df.empty else None)
         except Exception as exc:
-            logger.warning("Batch failed: %s", exc)
-            return {t: None for t in batch}
+            logger.debug("Download failed %s: %s", ticker, exc)
+            return ticker, None
 
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as pool:
-        future_map = {pool.submit(_fetch_batch, b): b for b in batches}
+        future_map = {pool.submit(_fetch_one, t): t for t in tickers}
         for future in as_completed(future_map):
-            batch_result = future.result()
+            ticker, df = future.result()
             with lock:
-                results.update(batch_result)
-                done_count += len(future_map[future])
+                results[ticker] = df
+                done_count += 1
                 if progress_callback:
-                    progress_callback(min(done_count, total), total)
+                    progress_callback(done_count, total)
 
     return results
-
-
-def _parse(raw: pd.DataFrame, tickers: list[str]) -> dict[str, pd.DataFrame | None]:
-    out: dict[str, pd.DataFrame | None] = {}
-    if isinstance(raw.columns, pd.MultiIndex):
-        for ticker in tickers:
-            try:
-                df = raw.xs(ticker, axis=1, level=1).dropna(how="all")
-                out[ticker] = df if not df.empty else None
-            except KeyError:
-                out[ticker] = None
-    else:
-        out[tickers[0]] = raw if not raw.empty else None
-    return out

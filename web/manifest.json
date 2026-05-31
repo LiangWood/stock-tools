@@ -1,0 +1,24 @@
+{
+  "name": "動能篩選器",
+  "short_name": "動能篩選器",
+  "description": "台股 / 美股動能選股工具",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060b12",
+  "theme_color": "#00d4aa",
+  "orientation": "landscape-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

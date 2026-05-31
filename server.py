@@ -84,6 +84,10 @@ _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js":   "application/javascript",
     ".css":  "text/css",
+    ".json": "application/json; charset=utf-8",
+    ".png":  "image/png",
+    ".ico":  "image/x-icon",
+    ".svg":  "image/svg+xml",
 }
 
 SECTOR_ETF_MAP = {
@@ -514,6 +518,13 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if route in ("/", "/index.html"):
                 self._file(os.path.join(WEB_DIR, "index.html"))
+
+            elif route.startswith("/icons/") or route == "/manifest.json":
+                path = os.path.join(WEB_DIR, route.lstrip("/"))
+                if os.path.isfile(path):
+                    self._file(path)
+                else:
+                    self._respond(404, "text/plain", b"Not Found")
 
             elif route == "/api/state":
                 with _lock:

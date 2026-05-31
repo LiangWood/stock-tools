@@ -1,0 +1,135 @@
+{
+  "_comment": "台股波段選股策略設定檔 — 修改此檔案即可調整策略，不需要動程式碼",
+  "_version": "2.0",
+  "_last_updated": "2026-05-30",
+  "strategy_name": "波段法人籌碼動能策略",
+  "description": "以法人籌碼為主軸（50%），技術動能為輔（35%），融資輔助確認（15%）。RSI 作為硬性過濾器防止追高。",
+  "hard_filters": {
+    "_comment": "硬性條件：任何一條不過直接剔除，不進入評分。這層是品質保證層。",
+    "stock_type": "stock",
+    "_stock_type_note": "只保留普通股。ETF、存託憑證、特別股全部排除。",
+    "min_market_cap_b": 30,
+    "_market_cap_note": "市值最低 30 億元。低於這個門檻的公司法人根本進不去，籌碼資料沒有意義。",
+    "min_turnover_10k": 3000,
+    "min_volume": 1000,
+    "_min_volume_note": "當日成交量最低 1000 張。過濾掉極度無流動性的冷門股，避免無法實際進出場。",
+    "_turnover_note": "當日成交金額最低 3000 萬元（3000 萬 = 3000 個萬元單位）。確保你能實際進出場，不會卡在流動性不足的股票。",
+    "rsi_range": {
+      "min": 50,
+      "max": 85,
+      "_note": "RSI 50～82。上限從 75 放寬至 82，允許漲停/爆量突破股（RSI 通常落在 75-82）進入評分，避免錯失正在發動的主升段。"
+    },
+    "require_positive_return_on_margin_decrease": true,
+    "_margin_note": "若融資在減少，當日報酬必須是正的。這過濾掉『弱勢被殺融資』的情況，只保留『散戶獲利了結、法人繼續推』的健康型態。"
+  },
+  "scoring": {
+    "fi_net": {
+      "weight": 0.18,
+      "ascending": true,
+      "label": "外資買賣超（元）",
+      "rationale": "外資是台股最大法人，25% 是核心。"
+    },
+    "it_consec_days": {
+      "weight": 0.17,
+      "ascending": true,
+      "label": "投信連續買超天數",
+      "rationale": "連買天數比單日金額更重要。連買 5 天以上代表基金有計畫建倉，10 天以上幾乎確定是核心佈局。"
+    },
+    "it_net": {
+      "weight": 0.04,
+      "ascending": true,
+      "label": "投信買賣超金額（元）",
+      "rationale": "作為 it_consec_days 的補充，加入金額規模維度。"
+    },
+    "macd_hist": {
+      "weight": 0.09,
+      "ascending": true,
+      "label": "MACD柱狀圖（% of price）",
+      "rationale": "MACD柱狀圖（MACD線 - 訊號線）以收盤價百分比表示。正值且擴大代表短期動能加速，是技術突破的先行指標。10% 權重讓動能趨勢納入選股。"
+    },
+    "vol_accel": {
+      "weight": 0.05,
+      "ascending": true,
+      "label": "量能加速度（近5日/近20日均量）",
+      "rationale": "近5日均量 ÷ 近20日均量。> 1.2 代表量能正在放大，是資金流入的趨勢訊號。比單日爆量更穩定，避免一日行情。"
+    },
+    "amount_ratio": {
+      "weight": 0.10,
+      "ascending": true,
+      "label": "今日成交金額 ÷ 20日均量",
+      "rationale": "今日爆量確認。量比 ≥ 1.5 代表今天比平均多 50%，是資金流入的直接證據。"
+    },
+    "volume": {
+      "weight": 0.07,
+      "ascending": true,
+      "label": "今日成交量（張）— 全市場排名",
+      "rationale": "絕對成交量全市場百分位排名。捕捉「成交量排行榜」效應：群創、鴻海等大量股不一定相對自身歷史爆量，但在全市場排名很高，代表主力資金聚焦於此。與 amount_ratio（相對自身）互補。"
+    },
+    "ret_20d": {
+      "weight": 0.08,
+      "ascending": true,
+      "label": "近 20 日漲幅（%）",
+      "rationale": "確認中期動能的持續性。"
+    },
+    "margin_chg": {
+      "weight": 0.06,
+      "ascending": false,
+      "label": "融資餘額變化（張）",
+      "rationale": "反向指標。融資減少但股價上漲 = 法人實單推動，動能更乾淨。"
+    },
+    "day_return": {
+      "weight": 0.02,
+      "ascending": true,
+      "label": "當日漲幅（%）",
+      "rationale": "輔助確認，單日漲幅噪音高，不主導結果。"
+    },
+    "rsi_trend": {
+      "weight": 0.03,
+      "ascending": true,
+      "label": "RSI 5日趨勢（動能方向）",
+      "rationale": "RSI(今日) - RSI(5天前)。正值代表 RSI 在上升，即 RSI 剛突破 50 中線或持續向上，動能正在加強。體現「RSI 中線突破」的精髓：動能由弱轉強比靜態高 RSI 更有意義。"
+    },
+    "rsi_divergence": {
+      "weight": 0.01,
+      "ascending": true,
+      "label": "RSI 背離分數（0/50/80）",
+      "rationale": "簡化背離偵測：看漲背離（股價更低但RSI更高）→ 80分；看跌背離（股價更高但RSI更低）→ 20分；無背離 → 50分。看漲背離代表賣壓動能在衰退，是潛在的底部訊號，可提前佈局。"
+    },
+    "breakout_score": {
+      "weight": 0.10,
+      "ascending": true,
+      "label": "突破確認分數（量能爆發+突破前高+當日強漲）",
+      "rationale": "捕捉「剛起漲」型態：不依賴法人籌碼，純粹從量價行為判斷。今日量 ÷ 近20日均量（40%）+ 收盤突破前20日最高（35%）+ 當日漲幅（25%）。法人往往在股票啟動後才跟進，此分數讓策略能提早一步。"
+    }
+  },
+  "output": {
+    "top_n": 50,
+    "_top_n_note": "回傳前 50 名候選名單。記住：這是候選清單，不是買單。",
+    "columns": [
+      "fi_net",
+      "it_net",
+      "it_consec_days",
+      "margin_chg",
+      "day_return",
+      "ret_20d",
+      "amount_ratio",
+      "rsi",
+      "market_cap_b",
+      "turnover_10k"
+    ]
+  },
+  "operational_notes": {
+    "when_to_run": "每日收盤後 15:30 以後跑，確保當日資料完整。",
+    "what_to_do_with_results": [
+      "1. 觀察前 20 名裡是否有同族群標的出現（例如 3 支 AI Server 相關）→ 族群確認",
+      "2. 對族群內排名最高的 2-3 支手動看週線圖 → 確認是否突破盤整",
+      "3. 符合週線型態才加入觀察清單",
+      "4. 等隔天開盤量能 ≥ 1.2 倍均量才考慮進場"
+    ],
+    "risk_management": {
+      "max_positions": 5,
+      "stop_loss_pct": -7,
+      "target_hold_days": "10-30 天（波段）"
+    }
+  }
+}

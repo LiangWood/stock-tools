@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>動能篩選器</title>
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#00d4aa">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="動能篩選器">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- SF Pro via system fonts — no external CDN needed on macOS/iOS -->
@@ -47,7 +54,7 @@ html, body {
   background: var(--bg0);
   color: var(--text0);
   font-family: var(--sans);
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
@@ -90,7 +97,7 @@ html, body {
 
 #logo {
   font-family: var(--mono);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--accent);
   letter-spacing: -0.3px;
@@ -244,7 +251,7 @@ html, body {
   left: 50%;
   transform: translate(-50%, -50%);
   color: var(--text2);
-  font-size: 14px;
+  font-size: 16px;
   letter-spacing: -2px;
   pointer-events: none;
   transition: color 0.2s;
@@ -339,11 +346,12 @@ html, body {
   font-weight: 500;
   letter-spacing: 0.9px;
   text-transform: uppercase;
-  position: relative;   /* needed for .col-rh absolute positioning */
+  position: relative;
   padding: 9px 10px;
   border-bottom: 1px solid var(--border);
   border-right: 1px solid var(--border);
-  text-align: right;
+  text-align: center;
+  vertical-align: middle;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
@@ -470,9 +478,10 @@ body.col-resizing * { cursor: col-resize !important; user-select: none !importan
 #scores-table td {
   padding: 7px 10px;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 16px;
   color: var(--text0);
-  text-align: right;
+  text-align: center;
+  vertical-align: middle;
   border-right: 1px solid rgba(255,255,255,0.03);
   white-space: nowrap;
   overflow: hidden;
@@ -485,7 +494,7 @@ td.left   { text-align: left; }
 td.rank-cell {
   text-align: center;
   color: var(--text2);
-  font-size: 11px;
+  font-size: 16px;
   font-weight: 500;
 }
 
@@ -497,22 +506,44 @@ tr[data-rank="3"] td.rank-cell { color: var(--gold); }
 td.ticker-cell {
   color: var(--accent);
   font-weight: 600;
-  font-size: 12px;
+  font-size: 16px;
   text-align: left;
   letter-spacing: 0.2px;
 }
 
 td.name-cell {
   font-family: var(--tc);
-  font-size: 11px;
+  font-size: 16px;
   color: var(--text1);
   text-align: left;
   max-width: 90px;
 }
 
-/* Percentage coloring */
+/* 合併顯示：代號 + 名稱同行 */
+.tc-code {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--accent);
+  font-size: 15px;
+  margin-right: 4px;
+}
+.tc-name {
+  font-family: var(--tc);
+  font-size: 15px;
+  color: var(--text0);
+}
+
+/* Percentage coloring — US (green=up, red=down) */
 #scores-table td.up   { color: var(--up);   }
 #scores-table td.down { color: var(--down); }
+
+/* TW coloring — 紅漲綠跌 */
+#scores-table td.tw-up   { color: var(--down); }   /* 漲 → 紅 */
+#scores-table td.tw-down { color: var(--up);   }   /* 跌 → 綠 */
+
+/* 漲停 / 跌停 — 僅 price、日% 欄位填底色，字白色 */
+#scores-table td.limit-up   { background: rgba(127,29,29,0.7) !important; color: #ffffff !important; }
+#scores-table td.limit-down { background: rgba(20,83,45,0.7)  !important; color: #ffffff !important; }
 
 /* RSI zone */
 #scores-table td.rsi-hot  { color: var(--up);   }
@@ -546,7 +577,7 @@ td.score-cell.col-sticky-right::before {
   position: relative;
   z-index: 2;
   font-weight: 600;
-  font-size: 11px;
+  font-size: 16px;
   color: var(--accent);
 }
 
@@ -575,6 +606,47 @@ td.breakout-cell {
 #scores-table td.chips-down { color: var(--down); }
 #scores-table td.margin-up   { color: var(--down); }  /* margin increase = bearish */
 #scores-table td.margin-down { color: var(--up);   }
+
+/* 漲停 / 跌停 row highlight */
+#scores-table tbody tr.tw-limit-up   { background: rgba(239,68,68,0.07) !important; }
+#scores-table tbody tr.tw-limit-down { background: rgba(34,197,94,0.07) !important; }
+#scores-table tbody tr.tw-limit-up   td.col-sticky { background: rgba(20,5,5,1); }
+#scores-table tbody tr.tw-limit-down td.col-sticky { background: rgba(5,20,5,1); }
+
+/* 漲停 / 跌停 badge in day% cell */
+.limit-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: rgba(239,68,68,0.22);
+  color: var(--down);
+  border: 1px solid rgba(239,68,68,0.45);
+}
+.limit-badge.down-badge {
+  background: rgba(34,197,94,0.22);
+  color: var(--up);
+  border-color: rgba(34,197,94,0.45);
+}
+
+/* 訊號欄位 badges */
+.sig-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+/* 散戶爆量 — 橘色 */
+.sig-retail  { background: rgba(251,146,60,0.18); color: #fb923c; border: 1px solid rgba(251,146,60,0.4); }
+/* 主力爆量 — 青色 */
+.sig-inst    { background: rgba(0,212,170,0.12); color: var(--accent); border: 1px solid rgba(0,212,170,0.35); }
+/* 主力散戶爆量 — 金色 */
+.sig-both    { background: rgba(245,158,11,0.18); color: var(--gold); border: 1px solid rgba(245,158,11,0.45); }
 
 /* Empty / initial state */
 #empty-msg {
@@ -676,10 +748,16 @@ td.breakout-cell {
   font-family: var(--mono);
   font-size: 15px;
   font-weight: 600;
-  color: var(--text0);
+  color: var(--accent);
   letter-spacing: -0.3px;
   white-space: nowrap;
   flex-shrink: 0;
+}
+#chart-symbol .sym-name {
+  color: var(--text1);
+  font-weight: 400;
+  font-size: 13px;
+  margin-left: 6px;
 }
 
 #chart-live-price {
@@ -688,6 +766,22 @@ td.breakout-cell {
   white-space: nowrap;
   flex-shrink: 0;
 }
+
+/* 游標 OHLC 資訊列 */
+#chart-ohlc {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+#chart-ohlc.active { display: flex; }
+#chart-ohlc .ol { color: var(--text1); margin-right: 2px; }
+#chart-ohlc .ov { color: var(--text0); font-weight: 500; }
+#chart-ohlc .sep { width: 1px; height: 12px; background: var(--border); }
+#chart-ohlc .pct { font-weight: 700; }
 
 .chart-ctrl-group {
   margin-left: auto;
@@ -892,6 +986,7 @@ td.breakout-cell {
     <div id="chart-panel" class="closed">
       <div id="chart-topbar">
         <div id="chart-symbol">—</div>
+        <div id="chart-ohlc"></div>
         <div id="chart-live-price"></div>
         <div class="chart-ctrl-group">
 
@@ -950,16 +1045,20 @@ const US_COLS = [
 ];
 
 const TW_COLS = [
-  { key:'rank',       label:'#',         w:'40px',  align:'center', cls:'rank-cell',   fmt:(v,i)=>i+1, sticky:true },
-  { key:'ticker',     label:'CODE',      w:'75px',  align:'left',   cls:'ticker-cell', fmt:v=>v||'—',  sticky:true },
-  { key:'name',       label:'名稱',      w:'88px',  align:'left',   cls:'name-cell',   fmt:v=>v||'—',  sticky:true },
-  { key:'price',      label:'PRICE',     w:'78px',  align:'right',  fmt:v=>v!=null?`NT$${v.toFixed(1)}`:'—' },
+  { key:'rank',       label:'RANK',       w:'52px',  align:'center', cls:'rank-cell',   fmt:v=>v??'—',  sticky:true },
+  { key:'ticker',     label:'標的',      w:'140px', align:'left',   cls:'ticker-cell', fmt:v=>v||'—',  sticky:true, tw_merge_name:true },
+  { key:'price',      label:'PRICE',     w:'82px',  align:'right',  fmt:v=>v!=null?parseFloat(v.toFixed(2)).toString():'—' },
   { key:'day_return', label:'日%',       w:'68px',  align:'right',  cls:'pct',         fmt:pct },
   { key:'ret_20d',    label:'20日%',     w:'68px',  align:'right',  cls:'pct',         fmt:pct },
-  { key:'fi_net',     label:'外資(億)',  w:'80px',  align:'right',  cls:'chips',       fmt:v=>v!=null?`${(v/1e8).toFixed(2)}`:'—' },
-  { key:'it_net',     label:'投信(億)',  w:'80px',  align:'right',  cls:'chips',       fmt:v=>v!=null?`${(v/1e8).toFixed(2)}`:'—' },
+  { key:'volume',     label:'成交量(張)', w:'90px',  align:'right',  fmt:v=>v!=null?v.toLocaleString():'—' },
+  { key:'fi_net',         label:'外資(張)',  w:'82px',  align:'right',  cls:'chips',       fmt:v=>v!=null?Math.round(v/1000).toLocaleString():'—' },
+  { key:'it_net',         label:'投信(張)',  w:'82px',  align:'right',  cls:'chips',       fmt:v=>v!=null?Math.round(v/1000).toLocaleString():'—' },
+  { key:'fi_consec_days', label:'外資連買',  w:'72px',  align:'right',  fmt:v=>v!=null&&v>0?`${v}天`:'—' },
+  { key:'it_consec_days', label:'投信連買',  w:'72px',  align:'right',  fmt:v=>v!=null&&v>0?`${v}天`:'—' },
+  { key:'inst_net',       label:'法人(張)',  w:'82px',  align:'right',  fmt:v=>v!=null?Math.round(v/1000).toLocaleString():'—' },
   { key:'margin_chg', label:'融資增減',  w:'80px',  align:'right',  cls:'margin',      fmt:v=>v!=null?(v>0?`+${v.toLocaleString()}`:v.toLocaleString()):'—' },
   { key:'rsi',        label:'RSI',       w:'60px',  align:'right',  cls:'rsi',         fmt:v=>v!=null?v.toFixed(1):'—' },
+  { key:'_signal',    label:'訊號',      w:'92px',  align:'center', cls:'signal-cell' },
   { key:'tw_score',   label:'SCORE',     w:'90px',  align:'right',  cls:'score',       fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
 ];
 
@@ -1052,8 +1151,7 @@ function renderHead() {
     const saved = _colW[uKey]?.[idx];
     th.style.width = saved ? saved + 'px' : col.w;
 
-    if (col.align === 'left')   th.classList.add('left');
-    if (col.align === 'center') th.classList.add('center');
+    // th 永遠置中，不繼承欄位的 align 設定
     if (col.sticky) {
       th.classList.add('col-sticky');
       th.style.left = _stickyMap[idx] + 'px';
@@ -1171,52 +1269,92 @@ function renderBody(opts = {}) {
     if (S.selectedTicker === row.ticker) tr.classList.add('selected');
     if (!animate && i < 60) { tr.classList.add('row-animate'); tr.style.animationDelay = `${i * 12}ms`; }
     if (animate && !oldRects.has(row.ticker) && i < 80) tr.classList.add('rank-new');
+    if (S.universe === 'tw') {
+      if (row.is_limit_up)   tr.classList.add('tw-limit-up');
+      else if (row.is_limit_down) tr.classList.add('tw-limit-down');
+    }
     tr.addEventListener('click', () => pickTicker(row.ticker));
+
+    // 漲停 / 跌停：優先使用後端精確判斷（TWT84U 收盤 == 漲停價），
+    // 回退到 day_return ≥ 9.7% 估算（TPEX 或後端資料缺失時）
+    const _limitUp   = S.universe === 'tw' && (row.is_limit_up   || row.day_return >=  0.097);
+    const _limitDown = S.universe === 'tw' && (row.is_limit_down || row.day_return <= -0.097);
 
     theCols.forEach((col, idx) => {
       const td = document.createElement('td');
       const val = row[col.key];
-      const display = col.fmt(val, i);
+      const display = col.fmt ? col.fmt(val, i) : '';
 
-      if (col.cls === 'score') {
+      if (col.key === '_signal' && S.universe === 'tw') {
+        // 訊號判斷：量比 ≥ 1.5 為爆量；fi_net > 0 為主力入場
+        const highVol  = (row.amount_ratio || 0) >= 1.5;
+        const instIn   = (row.fi_net || 0) > 0;
+        let sigClass = '', sigText = '';
+        if (highVol && instIn)  { sigClass = 'sig-both';   sigText = '主力散戶爆量'; }
+        else if (instIn)        { sigClass = 'sig-inst';   sigText = '主力爆量'; }
+        else if (highVol)       { sigClass = 'sig-retail'; sigText = '散戶爆量'; }
+        td.innerHTML = sigText ? `<span class="sig-badge ${sigClass}">${sigText}</span>` : '';
+      } else if (col.cls === 'score') {
         const pctFill = maxScore > 0 ? Math.min(100, (val / maxScore) * 100) : 0;
         td.classList.add('score-cell');
         td.innerHTML = `<div class="score-fill" style="width:${pctFill}%"></div><span class="score-text">${display}</span>`;
       } else if (col.cls === 'breakout') {
-        const pctFill = val != null ? Math.min(100, val) : 0;   // breakout_score 本身就是 0–100
+        const pctFill = val != null ? Math.min(100, val) : 0;
         td.classList.add('breakout-cell');
         td.innerHTML = `<div class="breakout-fill" style="width:${pctFill}%"></div><span class="breakout-text">${display}</span>`;
+      } else if (col.tw_merge_name && S.universe === 'tw') {
+        // 合併顯示：去掉 .TW/.TWO 後綴，代號+名稱同行
+        const code = (row.ticker||'').replace(/\.(TW|TWO)$/, '');
+        td.innerHTML = `<span class="tc-code">${code}</span><span class="tc-name">${row.name||''}</span>`;
       } else {
         td.textContent = display;
       }
 
       if (col.cls) td.classList.add(col.cls);
 
-      // Percentage coloring
+      // Percentage coloring（TW：紅漲綠跌；US：綠漲紅跌）
       if (col.cls === 'pct' && val != null) {
-        if (val > 0) td.classList.add('up');
-        else if (val < 0) td.classList.add('down');
+        const upCls   = S.universe === 'tw' ? 'tw-up'   : 'up';
+        const downCls = S.universe === 'tw' ? 'tw-down' : 'down';
+        if (val > 0) td.classList.add(upCls);
+        else if (val < 0) td.classList.add(downCls);
       }
 
       // Price column: color based on day_return direction
       if (col.key === 'price' && row.day_return != null) {
-        if (row.day_return > 0)      td.classList.add('up');
-        else if (row.day_return < 0) td.classList.add('down');
+        const upCls   = S.universe === 'tw' ? 'tw-up'   : 'up';
+        const downCls = S.universe === 'tw' ? 'tw-down' : 'down';
+        if (row.day_return > 0)      td.classList.add(upCls);
+        else if (row.day_return < 0) td.classList.add(downCls);
       }
 
-      // Chips coloring
-      if (col.cls === 'chips' && val != null) {
-        if (val > 0) td.classList.add('chips-up');
-        else if (val < 0) td.classList.add('chips-down');
+      // 漲停 / 跌停底色：只套在 price 和 day_return 欄位
+      if (_limitUp   && (col.key === 'price' || col.key === 'day_return')) td.classList.add('limit-up');
+      if (_limitDown && (col.key === 'price' || col.key === 'day_return')) td.classList.add('limit-down');
+
+      // 台股融資增減：正值=紅（漲色），負值=綠（跌色）
+      if (S.universe === 'tw' && col.key === 'margin_chg' && val != null) {
+        if (val > 0) td.classList.add('tw-up');
+        else if (val < 0) td.classList.add('tw-down');
       }
 
-      // Margin coloring (inverted)
-      if (col.cls === 'margin' && val != null) {
-        if (val > 0) td.classList.add('margin-up');
-        else if (val < 0) td.classList.add('margin-down');
+      // Chips / Margin coloring — US only，TW 不套用文字顏色
+      if (S.universe !== 'tw') {
+        if (col.cls === 'chips' && val != null) {
+          if (val > 0) td.classList.add('chips-up');
+          else if (val < 0) td.classList.add('chips-down');
+        }
+        if (col.cls === 'margin' && val != null) {
+          if (val > 0) td.classList.add('margin-up');
+          else if (val < 0) td.classList.add('margin-down');
+        }
       }
 
-      // RSI zone coloring removed per user request
+      // RSI 超買超賣上色：>70 紅（超買警示）；<30 綠（超賣機會）
+      if (col.key === 'rsi' && val != null) {
+        if (val > 70) td.classList.add('tw-up');        // 紅
+        else if (val < 30) td.classList.add('tw-down'); // 綠
+      }
 
       if (col.align === 'left')   td.classList.add('left');
       if (col.align === 'center') td.classList.add('center');
@@ -1337,6 +1475,51 @@ function initChart() {
     lwChart.applyOptions({ width: mount.clientWidth, height: mount.clientHeight });
   });
   ro.observe(area);
+
+  // ── 游標 OHLC 顯示 ────────────────────────────────────────────────
+  lwChart.subscribeCrosshairMove(param => {
+    const ohlcEl = document.getElementById('chart-ohlc');
+    const liveEl = document.getElementById('chart-live-price');
+
+    // 游標離開或無資料 → 恢復即時價格
+    if (!param.time || !param.seriesData || !candleSeries) {
+      ohlcEl.className = '';
+      liveEl.style.opacity = '1';
+      return;
+    }
+
+    const bar = param.seriesData.get(candleSeries);
+    if (!bar) {
+      ohlcEl.className = '';
+      liveEl.style.opacity = '1';
+      return;
+    }
+
+    const { open, high, low, close } = bar;
+    const chgPct = ((close - open) / open * 100);
+    const isUp   = close >= open;
+    // TW：紅漲綠跌；US：綠漲紅跌
+    const pctColor = S.universe === 'tw'
+      ? (isUp ? 'var(--down)' : 'var(--up)')
+      : (isUp ? 'var(--up)'  : 'var(--down)');
+    const arrow  = isUp ? '▲' : '▼';
+    const sign   = isUp ? '+' : '';
+
+    const fmt = v => v.toFixed(2);
+    ohlcEl.innerHTML = `
+      <span><span class="ol">開</span><span class="ov">${fmt(open)}</span></span>
+      <span class="sep"></span>
+      <span><span class="ol">高</span><span class="ov">${fmt(high)}</span></span>
+      <span class="sep"></span>
+      <span><span class="ol">低</span><span class="ov">${fmt(low)}</span></span>
+      <span class="sep"></span>
+      <span><span class="ol">收</span><span class="ov">${fmt(close)}</span></span>
+      <span class="sep"></span>
+      <span class="pct" style="color:${pctColor}">${arrow} ${sign}${chgPct.toFixed(2)}%</span>
+    `;
+    ohlcEl.className = 'active';
+    liveEl.style.opacity = '0';   // 游標期間隱藏即時價格，避免重疊
+  });
 }
 
 function ohlcvToCandles(data) {
@@ -1386,15 +1569,43 @@ function renderChart() {
   const raw     = ohlcvToCandles(S.ohlcvData);
   const candles = S.period === 'W' ? toWeekly(raw) : raw;
 
+  // K棒顏色：台股紅漲綠跌，美股綠漲紅跌
+  // 顏色基準：close vs 昨收（prev_close），非 close vs open
+  const isTw      = S.universe === 'tw';
+  const upColor   = isTw ? '#ef4444' : '#22c55e';
+  const downColor = isTw ? '#22c55e' : '#ef4444';
+
+  // 設定 series 預設（applyOptions 處理無昨收時的 fallback）
+  candleSeries.applyOptions({
+    upColor,   downColor,
+    borderUpColor: upColor,   borderDownColor: downColor,
+    wickUpColor:   upColor,   wickDownColor:   downColor,
+  });
+
+  // 逐根設定顏色（用昨收判斷漲跌，才能正確處理跳空）
+  candles.forEach((c, i) => {
+    const prevClose = i > 0 ? candles[i - 1].close : c.open;
+    const col = c.close >= prevClose ? upColor : downColor;
+    c.color       = col;
+    c.borderColor = col;
+    c.wickColor   = col;
+  });
+
   candleSeries.setData(candles);
 
-  // Volume histogram
+  // Volume histogram（顏色同步，同樣用昨收判斷）
   if (volSeries) {
-    volSeries.setData(candles.map(c => ({
-      time:  c.time,
-      value: c._vol,
-      color: c.close >= c.open ? 'rgba(34,197,94,0.55)' : 'rgba(239,68,68,0.55)',
-    })));
+    volSeries.setData(candles.map((c, i) => {
+      const prevClose = i > 0 ? candles[i - 1].close : c.open;
+      const isUp = c.close >= prevClose;
+      return {
+        time:  c.time,
+        value: c._vol,
+        color: isUp
+          ? (isTw ? 'rgba(239,68,68,0.55)' : 'rgba(34,197,94,0.55)')
+          : (isTw ? 'rgba(34,197,94,0.55)' : 'rgba(239,68,68,0.55)'),
+      };
+    }));
   }
 
   // Remove old EMA series
@@ -1419,12 +1630,16 @@ function renderChart() {
 
   lwChart.timeScale().fitContent();
 
-  // Live price display
-  const last = candles[candles.length - 1];
+  // Live price display（漲跌幅用昨收計算，反映真實日漲跌幅）
+  const last     = candles[candles.length - 1];
+  const prevClose = candles.length >= 2 ? candles[candles.length - 2].close : last.open;
   if (last) {
-    const chg    = last.close - last.open;
-    const chgPct = (chg / last.open * 100).toFixed(2);
-    const col    = chg >= 0 ? 'var(--up)' : 'var(--down)';
+    const chg    = last.close - prevClose;
+    const chgPct = (chg / prevClose * 100).toFixed(2);
+    const isTw   = S.universe === 'tw';
+    const col    = chg >= 0
+      ? (isTw ? 'var(--down)' : 'var(--up)')    // TW 漲=紅, US 漲=綠
+      : (isTw ? 'var(--up)'   : 'var(--down)'); // TW 跌=綠, US 跌=紅
     const sign   = chg >= 0 ? '+' : '';
     document.getElementById('chart-live-price').innerHTML =
       `<span style="color:${col};font-family:var(--mono);font-size:12px;">${last.close.toFixed(2)} (${sign}${chgPct}%)</span>`;
@@ -1447,8 +1662,15 @@ async function pickTicker(ticker, period) {
   document.querySelectorAll('#t-body tr').forEach(tr => {
     tr.classList.toggle('selected', tr.dataset.ticker === ticker);
   });
-  document.getElementById('chart-symbol').textContent = ticker;
+  // 顯示「代號 · 名稱」
+  const _scoreRow = S.scores.find(r => r.ticker === ticker);
+  const _code = ticker.replace(/\.(TW|TWO)$/, '');
+  const _name = _scoreRow ? (_scoreRow.name || _scoreRow.stock_name || '') : '';
+  document.getElementById('chart-symbol').innerHTML = _name
+    ? `${_code}<span class="sym-name">${_name}</span>`
+    : _code;
   document.getElementById('chart-live-price').textContent = '';
+  document.getElementById('chart-ohlc').className = '';
 
   const ph = document.getElementById('chart-placeholder');
   ph.style.display = 'flex';
@@ -1576,7 +1798,28 @@ async function pollState() {
 
     } else if (s.status === 'done') {
       clearInterval(pollTimer); pollTimer = null;
+
+      // 保持 overlay — 此時 OHLCV 已完成，正在渲染資料
+      showOverlay('載入技術指標…', 98);
       try { await loadScores(); } catch(e) { console.warn('loadScores failed', e); }
+
+      // 驗證 RSI 與 20日% 是否真的載入（非預設值 50 / 0）
+      if (S.universe === 'tw' && S.scores.length > 0) {
+        const isComplete = S.scores.some(r =>
+          r.rsi    != null && Math.abs(r.rsi    - 50)   > 1   &&
+          r.ret_20d != null && Math.abs(r.ret_20d)       > 0.001
+        );
+        if (!isComplete) {
+          // 技術指標尚未就緒（OHLCV 可能仍在計算），等待後重試
+          showOverlay('等待技術指標計算完成…', 99);
+          await new Promise(res => setTimeout(res, 2500));
+          try { await loadScores({ resetSort: false }); } catch(e) {}
+        }
+      }
+
+      // 動畫跑到 100%，短暫停留後收起 overlay
+      _animTo(100);
+      await new Promise(res => setTimeout(res, 420));
       hideOverlay(); lockUI(false);
       setStatus('done', `更新 ${s.last_updated}`);
       document.getElementById('updated-label').textContent = `更新：${s.last_updated}`;
@@ -1669,8 +1912,9 @@ document.querySelectorAll('.tab').forEach(btn => {
     S.scores = []; S.filteredScores = [];
     S.selectedTicker = null; S.ohlcvData = null;
     renderHead(); renderBody();
-    document.getElementById('chart-symbol').textContent    = '—';
+    document.getElementById('chart-symbol').textContent     = '—';
     document.getElementById('chart-live-price').textContent = '';
+    document.getElementById('chart-ohlc').className         = '';
     document.getElementById('chart-placeholder').style.display = '';
     if (candleSeries) candleSeries.setData([]);
     Object.values(emaSeries).forEach(s => lwChart.removeSeries(s));
