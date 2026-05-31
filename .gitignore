@@ -30,6 +30,7 @@ data/tickers_cache.json
 # Claude Code internals
 .claude/settings.local.json
 .superpowers/
+.mcp.json
 
 # Logs
 *.log

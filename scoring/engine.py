@@ -15,7 +15,126 @@ _WEIGHTS = {
     "_ret10_rank":  0.05,   # 10 日報酬
 }
 
+_CONTEXT_WEIGHTS = {
+    "technical_score": 0.72,
+    "_sector_score":  0.12,
+    "_valuation_score": 0.10,
+    "_earnings_score":  0.06,
+}
+
 TOP_N = 100   # 只顯示前 100 名
+
+
+def _score_pe(pe) -> float:
+    """Reasonable valuation score. Missing data is neutral, extreme PE is penalized."""
+    try:
+        if pe is None or pd.isna(pe):
+            return 50.0
+        pe = float(pe)
+    except Exception:
+        return 50.0
+    if pe <= 0:
+        return 0.0
+    if pe <= 25:
+        return 100.0
+    if pe <= 50:
+        return float(100 - (pe - 25) / 25 * 25)
+    if pe <= 100:
+        return float(75 - (pe - 50) / 50 * 35)
+    if pe <= 200:
+        return float(40 - (pe - 100) / 100 * 30)
+    return 0.0
+
+
+def _score_peg(peg) -> float:
+    """PEG < 1 is ideal; missing data is neutral."""
+    try:
+        if peg is None or pd.isna(peg):
+            return 50.0
+        peg = float(peg)
+    except Exception:
+        return 50.0
+    if peg <= 0:
+        return 20.0
+    if peg <= 1:
+        return 100.0
+    if peg <= 2:
+        return float(100 - (peg - 1) * 30)
+    if peg <= 4:
+        return float(70 - (peg - 2) * 17.5)
+    return 10.0
+
+
+def _score_eps_beat(eps_beat) -> float:
+    """Score the latest EPS surprise percentage."""
+    try:
+        if eps_beat is None or pd.isna(eps_beat):
+            return 50.0
+        eps_beat = float(eps_beat)
+    except Exception:
+        return 50.0
+    if eps_beat >= 15:
+        return 100.0
+    if eps_beat >= 10:
+        return 80.0
+    if eps_beat >= 0:
+        return 55.0
+    if eps_beat >= -10:
+        return 25.0
+    return 0.0
+
+
+def _score_sector(value) -> float:
+    """Sector ETF above weekly EMA50 is strong; missing data stays neutral."""
+    if value is True:
+        return 100.0
+    if value is False:
+        return 25.0
+    return 50.0
+
+
+def apply_contextual_scoring(scores_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Re-score US results after fundamentals and sector context have been merged.
+
+    compute_scores() can only rank technical/price/volume data because PE, PEG,
+    EPS surprise, and sector trend are fetched later in server.py. This function
+    folds those contextual fields into the final momentum_score.
+    """
+    if scores_df is None or scores_df.empty:
+        return scores_df
+
+    df = scores_df.copy()
+    if "technical_score" not in df.columns:
+        df["technical_score"] = df["momentum_score"]
+
+    df["_sector_score"] = df.get("sector_above_ema50", pd.Series([None] * len(df), index=df.index)).map(_score_sector)
+
+    pe_score = df.get("pe", pd.Series([None] * len(df), index=df.index)).map(_score_pe)
+    peg_score = df.get("peg_ratio", pd.Series([None] * len(df), index=df.index)).map(_score_peg)
+    df["_valuation_score"] = pe_score * 0.55 + peg_score * 0.45
+
+    eps_score = df.get("eps_beat", pd.Series([None] * len(df), index=df.index)).map(_score_eps_beat)
+    consec = df.get("eps_consecutive_beats", pd.Series([None] * len(df), index=df.index)).map(
+        lambda v: 100.0 if v is True else (40.0 if v is False else 50.0)
+    )
+    df["_earnings_score"] = eps_score * 0.60 + consec * 0.40
+
+    df["momentum_score"] = (
+        df["technical_score"] * _CONTEXT_WEIGHTS["technical_score"] +
+        df["_sector_score"] * _CONTEXT_WEIGHTS["_sector_score"] +
+        df["_valuation_score"] * _CONTEXT_WEIGHTS["_valuation_score"] +
+        df["_earnings_score"] * _CONTEXT_WEIGHTS["_earnings_score"]
+    ).clip(0, 100)
+
+    result = (
+        df.drop(columns=[c for c in df.columns if c.startswith("_")])
+        .sort_values("momentum_score", ascending=False)
+        .head(TOP_N)
+        .reset_index(drop=True)
+    )
+    result["rank"] = range(1, len(result) + 1)
+    return result
 
 
 def calculate_rsi(prices: pd.Series, period: int = 14) -> float:
@@ -306,7 +425,8 @@ def compute_scores(ticker_data: dict) -> pd.DataFrame:
 
     weights    = np.array(list(_WEIGHTS.values()))
     score_cols = list(_WEIGHTS.keys())
-    df["momentum_score"] = (df[score_cols].values @ weights).clip(0, 100)
+    df["technical_score"] = (df[score_cols].values @ weights).clip(0, 100)
+    df["momentum_score"] = df["technical_score"]
 
     result = (
         df.drop(columns=[c for c in df.columns if c.startswith("_")])

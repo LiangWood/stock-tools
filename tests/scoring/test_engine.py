@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import pytest
-from scoring.engine import calculate_rsi, compute_scores
+from scoring.engine import apply_contextual_scoring, calculate_rsi, compute_scores
 
 
 # ── test helpers ──────────────────────────────────────────────────────────────
@@ -73,7 +73,8 @@ def test_compute_scores_returns_dataframe():
 def test_compute_scores_has_required_columns():
     result = compute_scores({"T1": _make_df(), "T2": _make_df(seed=99)})
     for col in ["ticker", "price", "day_return", "ret_20d",
-                "rs_vs_spy", "rs_5d_vs_spy", "vol_ratio", "rsi", "momentum_score"]:
+                "rs_vs_spy", "rs_5d_vs_spy", "vol_ratio", "rsi",
+                "technical_score", "momentum_score"]:
         assert col in result.columns, f"missing column: {col}"
 
 
@@ -177,6 +178,49 @@ def test_rs_5d_vs_spy_captures_fresh_breakout():
 
     row = result[result["ticker"] == "FRESH"].iloc[0]
     assert row["rs_5d_vs_spy"] == pytest.approx(0.07)
+
+
+def test_contextual_scoring_rewards_sector_valuation_and_earnings():
+    base = pd.DataFrame([
+        {
+            "ticker": "GOOD",
+            "technical_score": 70.0,
+            "momentum_score": 70.0,
+            "sector_above_ema50": True,
+            "pe": 24.0,
+            "peg_ratio": 0.8,
+            "eps_beat": 18.0,
+            "eps_consecutive_beats": True,
+        },
+        {
+            "ticker": "WEAK",
+            "technical_score": 70.0,
+            "momentum_score": 70.0,
+            "sector_above_ema50": False,
+            "pe": 240.0,
+            "peg_ratio": 5.0,
+            "eps_beat": -12.0,
+            "eps_consecutive_beats": False,
+        },
+    ])
+
+    result = apply_contextual_scoring(base)
+
+    assert result.iloc[0]["ticker"] == "GOOD"
+    assert result.iloc[0]["momentum_score"] > result.iloc[1]["momentum_score"]
+    assert result["rank"].tolist() == [1, 2]
+
+
+def test_contextual_scoring_keeps_missing_fundamentals_neutral():
+    base = pd.DataFrame([{
+        "ticker": "MISSING",
+        "technical_score": 70.0,
+        "momentum_score": 70.0,
+    }])
+
+    result = apply_contextual_scoring(base)
+
+    assert 60.0 < result.iloc[0]["momentum_score"] < 75.0
 
 
 # ── Empty / edge cases ────────────────────────────────────────────────────────

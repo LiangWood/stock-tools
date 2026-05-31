@@ -16,6 +16,29 @@
 <!-- SF Pro via system fonts — no external CDN needed on macOS/iOS -->
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
+@font-face {
+  font-family: 'Proxima Nova';
+  src: url('/fonts/ProximaNova-Light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Proxima Nova';
+  src: url('/fonts/ProximaNova-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Proxima Nova';
+  src: url('/fonts/ProximaNova-Semibold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+</style>
+<style>
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    DESIGN TOKENS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
@@ -38,9 +61,9 @@
   --hot:       #ef4444;
   --cold:      #22c55e;
   --gold:      #f59e0b;
-  --mono:      'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', system-ui, sans-serif;
-  --sans:      'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', system-ui, sans-serif;
-  --tc:        'SF Pro Display', -apple-system, BlinkMacSystemFont, 'PingFang TC', 'Noto Sans TC', sans-serif;
+  --mono:      'Proxima Nova', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --sans:      'Proxima Nova', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --tc:        'Proxima Nova', -apple-system, BlinkMacSystemFont, 'PingFang TC', 'Noto Sans TC', sans-serif;
   --radius:    5px;
 }
 
@@ -54,7 +77,7 @@ html, body {
   background: var(--bg0);
   color: var(--text0);
   font-family: var(--sans);
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
@@ -478,7 +501,7 @@ body.col-resizing * { cursor: col-resize !important; user-select: none !importan
 #scores-table td {
   padding: 7px 10px;
   font-family: var(--mono);
-  font-size: 16px;
+  font-size: 17px;
   color: var(--text0);
   text-align: center;
   vertical-align: middle;
@@ -494,7 +517,7 @@ td.left   { text-align: left; }
 td.rank-cell {
   text-align: center;
   color: var(--text2);
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 500;
 }
 
@@ -506,14 +529,14 @@ tr[data-rank="3"] td.rank-cell { color: var(--gold); }
 td.ticker-cell {
   color: var(--accent);
   font-weight: 600;
-  font-size: 16px;
+  font-size: 17px;
   text-align: left;
   letter-spacing: 0.2px;
 }
 
 td.name-cell {
   font-family: var(--tc);
-  font-size: 16px;
+  font-size: 17px;
   color: var(--text1);
   text-align: left;
   max-width: 90px;
@@ -524,18 +547,33 @@ td.name-cell {
   font-family: var(--mono);
   font-weight: 600;
   color: var(--accent);
-  font-size: 15px;
+  font-size: 17px;
   margin-right: 4px;
 }
 .tc-name {
   font-family: var(--tc);
-  font-size: 15px;
+  font-size: 17px;
   color: var(--text0);
 }
 
 /* Percentage coloring — US (green=up, red=down) */
 #scores-table td.up   { color: var(--up);   }
 #scores-table td.down { color: var(--down); }
+
+/* 漲停 / 跌停 badge */
+.limit-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 5px;
+  vertical-align: middle;
+  letter-spacing: 0.3px;
+  line-height: 1.4;
+}
+.limit-up   { background: var(--up);   color: #fff; }
+.limit-down { background: var(--down); color: #fff; }
 
 /* TW coloring — 紅漲綠跌 */
 #scores-table td.tw-up   { color: var(--down); }   /* 漲 → 紅 */
@@ -577,7 +615,7 @@ td.score-cell.col-sticky-right::before {
   position: relative;
   z-index: 2;
   font-weight: 600;
-  font-size: 16px;
+  font-size: 17px;
   color: var(--accent);
 }
 
@@ -1031,9 +1069,9 @@ const US_COLS = [
   { key:'ticker',        label:'TICKER',     w:'78px',  align:'left',   cls:'ticker-cell', fmt:v=>v||'—',  sticky:true },
   { key:'price',         label:'PRICE',      w:'80px',  align:'right',  fmt:v=>v!=null?`$${v.toFixed(2)}`:'—' },
   { key:'day_return',    label:'當日%',      w:'68px',  align:'right',  cls:'pct',         fmt:pct },
-  { key:'vol_1d20d',     label:'量比日/20',  w:'76px',  align:'right',  fmt:v=>v!=null?`${v.toFixed(2)}×`:'—' },
   { key:'ret_10d',       label:'10日%',      w:'68px',  align:'right',  cls:'pct',         fmt:pct },
   { key:'ret_20d',       label:'20日%',      w:'68px',  align:'right',  cls:'pct',         fmt:pct },
+  { key:'vol_1d20d',     label:'量比日/20',  w:'76px',  align:'right',  fmt:v=>v!=null?`${v.toFixed(2)}×`:'—' },
   { key:'vol_ratio',     label:'量比5/20',   w:'76px',  align:'right',  fmt:v=>v!=null?`${v.toFixed(2)}×`:'—' },
   { key:'rs_vs_spy',     label:'RS/SPY(1M)', w:'82px',  align:'right',  cls:'pct',         fmt:pct },
   { key:'rs_5d_vs_spy',  label:'RS/SPY(5D)', w:'82px',  align:'right',  cls:'pct',         fmt:pct },
@@ -1049,6 +1087,7 @@ const TW_COLS = [
   { key:'ticker',     label:'標的',      w:'140px', align:'left',   cls:'ticker-cell', fmt:v=>v||'—',  sticky:true, tw_merge_name:true },
   { key:'price',      label:'PRICE',     w:'82px',  align:'right',  fmt:v=>v!=null?parseFloat(v.toFixed(2)).toString():'—' },
   { key:'day_return', label:'日%',       w:'68px',  align:'right',  cls:'pct',         fmt:pct },
+  { key:'ret_10d',    label:'10日%',     w:'68px',  align:'right',  cls:'pct',         fmt:pct },
   { key:'ret_20d',    label:'20日%',     w:'68px',  align:'right',  cls:'pct',         fmt:pct },
   { key:'volume',     label:'成交量(張)', w:'90px',  align:'right',  fmt:v=>v!=null?v.toLocaleString():'—' },
   { key:'fi_net',         label:'外資(張)',  w:'82px',  align:'right',  cls:'chips',       fmt:v=>v!=null?Math.round(v/1000).toLocaleString():'—' },
@@ -1275,10 +1314,9 @@ function renderBody(opts = {}) {
     }
     tr.addEventListener('click', () => pickTicker(row.ticker));
 
-    // 漲停 / 跌停：優先使用後端精確判斷（TWT84U 收盤 == 漲停價），
-    // 回退到 day_return ≥ 9.7% 估算（TPEX 或後端資料缺失時）
-    const _limitUp   = S.universe === 'tw' && (row.is_limit_up   || row.day_return >=  0.097);
-    const _limitDown = S.universe === 'tw' && (row.is_limit_down || row.day_return <= -0.097);
+    // 漲停 / 跌停：只使用 tw-stock-agent 後端傳回的交易所依據，不用漲跌幅估算。
+    const _limitUp   = S.universe === 'tw' && row.is_limit_up === true;
+    const _limitDown = S.universe === 'tw' && row.is_limit_down === true;
 
     theCols.forEach((col, idx) => {
       const td = document.createElement('td');
@@ -1318,6 +1356,7 @@ function renderBody(opts = {}) {
         const downCls = S.universe === 'tw' ? 'tw-down' : 'down';
         if (val > 0) td.classList.add(upCls);
         else if (val < 0) td.classList.add(downCls);
+
       }
 
       // Price column: color based on day_return direction
@@ -1496,8 +1535,15 @@ function initChart() {
     }
 
     const { open, high, low, close } = bar;
-    const chgPct = ((close - open) / open * 100);
-    const isUp   = close >= open;
+    const visibleRaw = S.period === 'W' ? toWeekly(ohlcvToCandles(S.ohlcvData)) : ohlcvToCandles(S.ohlcvData);
+    const idx = visibleRaw.findIndex(c => c.time === bar.time);
+    const prevClose = idx > 0 ? visibleRaw[idx - 1].close : open;
+    const isLatest = idx === visibleRaw.length - 1;
+    const scoreRow = S.scores.find(r => r.ticker === S.selectedTicker);
+    const pctValue = isLatest && scoreRow?.day_return != null
+      ? scoreRow.day_return * 100
+      : ((close - prevClose) / prevClose * 100);
+    const isUp   = pctValue >= 0;
     // TW：紅漲綠跌；US：綠漲紅跌
     const pctColor = S.universe === 'tw'
       ? (isUp ? 'var(--down)' : 'var(--up)')
@@ -1515,7 +1561,7 @@ function initChart() {
       <span class="sep"></span>
       <span><span class="ol">收</span><span class="ov">${fmt(close)}</span></span>
       <span class="sep"></span>
-      <span class="pct" style="color:${pctColor}">${arrow} ${sign}${chgPct.toFixed(2)}%</span>
+      <span class="pct" style="color:${pctColor}">${arrow} ${sign}${pctValue.toFixed(2)}%</span>
     `;
     ohlcEl.className = 'active';
     liveEl.style.opacity = '0';   // 游標期間隱藏即時價格，避免重疊
@@ -1568,6 +1614,7 @@ function renderChart() {
   if (!S.ohlcvData) return;
   const raw     = ohlcvToCandles(S.ohlcvData);
   const candles = S.period === 'W' ? toWeekly(raw) : raw;
+  const scoreRow = S.scores.find(r => r.ticker === S.selectedTicker);
 
   // K棒顏色：台股紅漲綠跌，美股綠漲紅跌
   // 顏色基準：close vs 昨收（prev_close），非 close vs open
@@ -1630,19 +1677,21 @@ function renderChart() {
 
   lwChart.timeScale().fitContent();
 
-  // Live price display（漲跌幅用昨收計算，反映真實日漲跌幅）
+  // Live price display: prefer exchange quote row so it matches the ranked table.
   const last     = candles[candles.length - 1];
   const prevClose = candles.length >= 2 ? candles[candles.length - 2].close : last.open;
   if (last) {
-    const chg    = last.close - prevClose;
-    const chgPct = (chg / prevClose * 100).toFixed(2);
+    const quotePrice = scoreRow?.price ?? last.close;
+    const quoteReturn = scoreRow?.day_return;
+    const chg    = quoteReturn != null ? quoteReturn : ((quotePrice - prevClose) / prevClose);
+    const chgPct = (chg * 100).toFixed(2);
     const isTw   = S.universe === 'tw';
     const col    = chg >= 0
       ? (isTw ? 'var(--down)' : 'var(--up)')    // TW 漲=紅, US 漲=綠
       : (isTw ? 'var(--up)'   : 'var(--down)'); // TW 跌=綠, US 跌=紅
     const sign   = chg >= 0 ? '+' : '';
     document.getElementById('chart-live-price').innerHTML =
-      `<span style="color:${col};font-family:var(--mono);font-size:12px;">${last.close.toFixed(2)} (${sign}${chgPct}%)</span>`;
+      `<span style="color:${col};font-family:var(--mono);font-size:12px;">${quotePrice.toFixed(2)} (${sign}${chgPct}%)</span>`;
   }
 }
 

@@ -6,6 +6,7 @@ Tools:
   screen_tw_stocks    — top-N TW stocks by tw_score (uses server cache if available)
   get_tw_stock_detail — quote + chips + technicals for a single TW ticker
   get_stock_history   — OHLCV history for any ticker via yfinance
+  get_market_overview — TAIEX index and TWSE market overview
 
 Cache strategy:
   If server.py is running on localhost:5177 with TW data ready, tools read from
@@ -14,9 +15,12 @@ Cache strategy:
 import json
 import math
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
+from datetime import datetime, time
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -25,6 +29,9 @@ from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("tw-stock-agent")
 
 _SERVER = "http://localhost:5177"
+_TWSE_MARKET_INDEX_URL = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?response=json&type=IND"
+_TWSE_MARKET_STATS_URL = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?response=json&type=MS"
+_TAIWAN_TZ = ZoneInfo("Asia/Taipei")
 
 
 # ── Server helpers ────────────────────────────────────────────────────────────
@@ -55,6 +62,123 @@ def _clean(v):
     return v
 
 
+def _http_json(url: str, timeout: float = 12.0):
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+            ),
+            "Accept": "application/json,text/plain,*/*",
+            "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Cache-Control": "no-cache",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _num(value):
+    if value is None:
+        return None
+
+    text = str(value).strip().replace(",", "")
+    if not text or text in {"--", "-"}:
+        return None
+
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _int_num(value):
+    parsed = _num(value)
+    return int(parsed) if parsed is not None else None
+
+
+def _stock_count(value):
+    match = re.search(r"\d[\d,]*", str(value or ""))
+    return int(match.group(0).replace(",", "")) if match else None
+
+
+def _twse_date(date_text):
+    text = str(date_text or "").strip()
+    if len(text) == 8 and text.isdigit():
+        return f"{text[:4]}-{text[4:6]}-{text[6:8]}"
+    if len(text) == 7 and text.isdigit():
+        return f"{int(text[:3]) + 1911}-{text[3:5]}-{text[5:7]}"
+    return datetime.now(_TAIWAN_TZ).date().isoformat()
+
+
+def _market_status():
+    now = datetime.now(_TAIWAN_TZ)
+    if now.weekday() >= 5:
+        return "closed"
+    return "open" if time(9, 0) <= now.time() <= time(13, 30) else "closed"
+
+
+def _extract_taiex(payload):
+    for table in payload.get("tables", []):
+        fields = table.get("fields", [])
+        if "指數" not in fields or "收盤指數" not in fields:
+            continue
+
+        for row in table.get("data", []):
+            if not row or row[0] != "發行量加權股價指數":
+                continue
+
+            sign = -1 if len(row) > 2 and "-" in str(row[2]) else 1
+            points = _num(row[3] if len(row) > 3 else None)
+            pct = _num(row[4] if len(row) > 4 else None)
+            return {
+                "index_name": "TAIEX",
+                "local_name": "發行量加權股價指數",
+                "current_value": _num(row[1] if len(row) > 1 else None),
+                "change_points": points * sign if points is not None else None,
+                "change_percentage": pct * sign if pct is not None else None,
+            }
+    return None
+
+
+def _extract_market_stats(payload):
+    result = {}
+
+    for table in payload.get("tables", []):
+        title = table.get("title", "")
+
+        if "大盤統計資訊" in title:
+            for row in table.get("data", []):
+                if row and str(row[0]).startswith("總計"):
+                    result["turnover"] = _int_num(row[1] if len(row) > 1 else None)
+                    result["volume"] = _int_num(row[2] if len(row) > 2 else None)
+                    result["transactions"] = _int_num(row[3] if len(row) > 3 else None)
+                    break
+
+        if title == "漲跌證券數合計":
+            fields = table.get("fields", [])
+            stock_col = fields.index("股票") if "股票" in fields else 2
+            for row in table.get("data", []):
+                if len(row) <= stock_col:
+                    continue
+
+                label = str(row[0])
+                count = _stock_count(row[stock_col])
+                if label.startswith("上漲"):
+                    result["advancing_stocks"] = count
+                elif label.startswith("下跌"):
+                    result["declining_stocks"] = count
+                elif label.startswith("持平"):
+                    result["unchanged_stocks"] = count
+                elif label.startswith("未成交"):
+                    result["not_traded_stocks"] = count
+                elif label.startswith("無比價"):
+                    result["no_comparison_stocks"] = count
+
+    return result
+
+
 # ── Tools ─────────────────────────────────────────────────────────────────────
 
 @mcp.tool()
@@ -64,7 +188,8 @@ def screen_tw_stocks(top_n: int = 20) -> str:
     Returns the top-N ranked stocks as a JSON array sorted by tw_score desc.
 
     Each record: ticker, name, price, day_return, tw_score, rank,
-    fi_net, it_net, margin_chg, ret_20d, amount_ratio, rsi.
+    fi_net, it_net, margin_chg, ret_20d, amount_ratio, rsi,
+    is_limit_up, is_limit_down, limit_up_price, limit_down_price, limit_basis.
 
     Fast path: reads from server.py cache if it is running on localhost:5177
     with TW universe data already fetched.
@@ -92,6 +217,62 @@ def screen_tw_stocks(top_n: int = 20) -> str:
 
 
 @mcp.tool()
+def get_market_overview() -> str:
+    """
+    Taiwan market overview from TWSE.
+
+    Returns JSON with TAIEX index, turnover, volume, transaction count,
+    advancing/declining/unchanged stock counts, and current market status.
+    """
+    try:
+        index_payload = _http_json(_TWSE_MARKET_INDEX_URL)
+        stats_payload = _http_json(_TWSE_MARKET_STATS_URL)
+    except Exception as exc:
+        return json.dumps(
+            {"error": f"failed to fetch TWSE market overview: {exc}"},
+            ensure_ascii=False,
+        )
+
+    if index_payload.get("stat") != "OK" or stats_payload.get("stat") != "OK":
+        return json.dumps(
+            {
+                "error": "TWSE market overview endpoints returned non-OK status",
+                "index_status": index_payload.get("stat"),
+                "stats_status": stats_payload.get("stat"),
+            },
+            ensure_ascii=False,
+        )
+
+    taiex = _extract_taiex(index_payload)
+    if not taiex or taiex.get("current_value") is None:
+        return json.dumps(
+            {"error": "failed to parse TAIEX from TWSE market overview"},
+            ensure_ascii=False,
+        )
+
+    stats = _extract_market_stats(stats_payload)
+    date = _twse_date(index_payload.get("date") or stats_payload.get("date"))
+    updated_at = datetime.now(_TAIWAN_TZ).isoformat()
+
+    result = {
+        "date": date,
+        "taiex": taiex,
+        "volume": stats.get("volume"),
+        "turnover": stats.get("turnover"),
+        "transactions": stats.get("transactions"),
+        "advancing_stocks": stats.get("advancing_stocks"),
+        "declining_stocks": stats.get("declining_stocks"),
+        "unchanged_stocks": stats.get("unchanged_stocks"),
+        "not_traded_stocks": stats.get("not_traded_stocks"),
+        "no_comparison_stocks": stats.get("no_comparison_stocks"),
+        "market_status": _market_status(),
+        "updated_at": updated_at,
+        "source": "TWSE",
+    }
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+@mcp.tool()
 def get_tw_stock_detail(ticker: str) -> str:
     """
     Detailed data for a single Taiwan stock.
@@ -112,6 +293,7 @@ def get_tw_stock_detail(ticker: str) -> str:
     from data.twse_fetcher import (
         _get,
         _parse_twse_quote, _parse_twse_margin,
+        _fetch_twse_limits, _current_limit_flags,
         _parse_tpex_quote, _parse_tpex_chips, _parse_tpex_margin,
         _TWSE_QUOTE, _TWSE_MARGIN,
         _TPEX_QUOTE, _TPEX_CHIPS, _TPEX_MARGIN,
@@ -145,10 +327,15 @@ def get_tw_stock_detail(ticker: str) -> str:
         except Exception:
             pass
         try:
+            limit_data = _fetch_twse_limits()
+        except Exception:
+            limit_data = {}
+        try:
             margin_data = _parse_twse_margin(_get(_TWSE_MARGIN))
         except Exception:
             pass
     else:
+        limit_data = {}
         try:
             quote_data = _parse_tpex_quote(_get(_TPEX_QUOTE, verify=False))
         except Exception:
@@ -165,6 +352,7 @@ def get_tw_stock_detail(ticker: str) -> str:
     quote  = quote_data.get(code, {})
     chips  = chips_data.get(code, {})
     margin = margin_data.get(code, {})
+    limits = limit_data.get(code, {})
 
     if not quote:
         return json.dumps(
@@ -219,14 +407,24 @@ def get_tw_stock_detail(ticker: str) -> str:
                 int(v) if v is not None else None for v in tail["Volume"].tolist()
             ]
 
+    limit_up = _sf(limits.get("limit_up"))
+    limit_down = _sf(limits.get("limit_down"))
+    price = _sf(quote.get("price"))
+    is_limit_up, is_limit_down, limit_basis = _current_limit_flags(quote)
+
     result = {
         "ticker": yf_ticker,
         "source": "server_cache" if cached_ohlcv else "live_fetch",
         "quote": {
             "name":       quote.get("name", ""),
-            "price":      _sf(quote.get("price")),
+            "price":      price,
             "day_return": _sf(quote.get("day_return")),
             "volume":     quote.get("volume"),
+            "is_limit_up": is_limit_up,
+            "is_limit_down": is_limit_down,
+            "limit_up_price": limit_up,
+            "limit_down_price": limit_down,
+            "limit_basis": limit_basis,
         },
         "chips": {
             "fi_net":     _sf(chips.get("fi_net", 0.0)),

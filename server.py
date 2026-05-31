@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from data.fetcher import fetch_all
 from data.twse_fetcher import fetch_tw_all
 from data.universe import get_combined_tickers, get_nasdaq100_tickers, get_sp500_tickers
-from scoring.engine import compute_scores
+from scoring.engine import apply_contextual_scoring, compute_scores
 from scoring.tw_engine import compute_tw_scores
 
 logger = logging.getLogger(__name__)
@@ -88,6 +88,9 @@ _CONTENT_TYPES = {
     ".png":  "image/png",
     ".ico":  "image/x-icon",
     ".svg":  "image/svg+xml",
+    ".ttf":  "font/ttf",
+    ".woff": "font/woff",
+    ".woff2":"font/woff2",
 }
 
 SECTOR_ETF_MAP = {
@@ -104,12 +107,12 @@ SECTOR_ETF_MAP = {
     "Communication Services": "XLC",
 }
 
-# 只保留實際在表格顯示的欄位（PE、PEG）。
-# eps_beat / eps_consecutive_beats / sector_above_ema50 已從前端移除，
-# 不再抓取以節省每檔額外的 earnings_dates 網路請求與族群 ETF 下載。
 _FUNDAMENTAL_COLUMNS = [
     "pe",
     "peg_ratio",
+    "eps_beat",
+    "eps_consecutive_beats",
+    "sector_above_ema50",
 ]
 
 
@@ -260,22 +263,22 @@ def _enrich_fundamentals(scores_df, sector_ema_by_etf=None) -> object:
     return df
 
 
-def _fetch_fund_dict(tickers: list) -> dict:
+def _fetch_fund_dict(tickers: list, sector_ema_by_etf=None) -> dict:
     """
-    抓取各 ticker 的基本面（只取 PE、PEG），回傳 {ticker: {pe, peg_ratio}}。
+    抓取各 ticker 的基本面與 sector context。
 
-    優化：
-      - 每檔只發一次 t.info 請求（不再呼叫 t.earnings_dates / 族群 ETF）
-      - 4 個 worker 並行（單一請求/檔，rate-limit 壓力比過去減半）
-      - 即時回報 "基本面 X/Y" 進度
+    回傳 {ticker: {pe, peg_ratio, eps_beat, eps_consecutive_beats,
+    sector_above_ema50}}，供 final momentum_score 重新合成。
     """
     import yfinance as yf
     import time as _t
 
     total = len(tickers)
+    if sector_ema_by_etf is None:
+        sector_ema_by_etf = {etf: None for etf in set(SECTOR_ETF_MAP.values())}
 
     def _one(ticker: str) -> tuple[str, dict]:
-        pe = peg_ratio = None
+        pe = peg_ratio = eps_beat = eps_consecutive_beats = sector_above_ema50 = None
         try:
             t = yf.Ticker(ticker)
             info = {}
@@ -292,9 +295,36 @@ def _fetch_fund_dict(tickers: list) -> dict:
             eg = _safe_float(info.get("earningsGrowth"))
             if pe and eg and eg * 100 > 0:
                 peg_ratio = pe / (eg * 100)
+
+            sector = info.get("sector")
+            etf = SECTOR_ETF_MAP.get(sector)
+            if etf:
+                sector_above_ema50 = sector_ema_by_etf.get(etf)
+
+            try:
+                ed = t.earnings_dates
+                if ed is not None and not ed.empty and "Surprise(%)" in ed.columns:
+                    recent = ed.dropna(subset=["Surprise(%)"])
+                    try:
+                        recent = recent.sort_index(ascending=False)
+                    except Exception:
+                        pass
+                    if not recent.empty:
+                        eps_beat = _safe_float(recent["Surprise(%)"].iloc[0])
+                    recent_two = recent.head(2)
+                    if len(recent_two) >= 2:
+                        eps_consecutive_beats = bool((recent_two["Surprise(%)"] >= 10).all())
+            except Exception:
+                pass
         except Exception:
             pass
-        return ticker, {"pe": pe, "peg_ratio": peg_ratio}
+        return ticker, {
+            "pe": pe,
+            "peg_ratio": peg_ratio,
+            "eps_beat": eps_beat,
+            "eps_consecutive_beats": eps_consecutive_beats,
+            "sector_above_ema50": sector_above_ema50,
+        }
 
     result: dict = {}
     done = 0
@@ -454,7 +484,11 @@ def _fetch_worker(universe: str):
             ohlcv = {t: _ohlcv_to_json(df) for t, df in raw.items()}
 
             scored_tickers = set(scores_df["ticker"].tolist())
-            missing = list(scored_tickers - set(_fund_cache.keys()))
+            missing = [
+                ticker for ticker in scored_tickers
+                if ticker not in _fund_cache
+                or any(col not in _fund_cache.get(ticker, {}) for col in _FUNDAMENTAL_COLUMNS)
+            ]
 
             if missing:
                 # 只抓「從未見過」的 ticker（首次啟動 = 全部；後續 = 新進入的）
@@ -462,7 +496,10 @@ def _fetch_worker(universe: str):
                     _state["progress"] = f"抓取基本面（{len(missing)} 檔新 ticker）…"
                 logger.info("基本面快取缺少 %d 檔，開始抓取", len(missing))
                 try:
-                    new_fund = _fetch_fund_dict(missing)
+                    with _lock:
+                        _state["progress"] = "抓取板塊趨勢…"
+                    sector_ema = _fetch_sector_ema(scores_df)
+                    new_fund = _fetch_fund_dict(missing, sector_ema_by_etf=sector_ema)
                     _fund_cache.update(new_fund)
                     _save_fund_cache()   # 持久化到磁碟，重啟可重用
                 except Exception as e:
@@ -472,6 +509,7 @@ def _fetch_worker(universe: str):
 
             # 套用快取到本次評分結果
             scores_df = _apply_fund_dict(scores_df, _fund_cache)
+            scores_df = apply_contextual_scoring(scores_df)
 
             # US：評分 + 基本面全部完成後才設定 done
             with _lock:
@@ -519,7 +557,7 @@ class Handler(BaseHTTPRequestHandler):
             if route in ("/", "/index.html"):
                 self._file(os.path.join(WEB_DIR, "index.html"))
 
-            elif route.startswith("/icons/") or route == "/manifest.json":
+            elif route.startswith("/fonts/") or route.startswith("/icons/") or route == "/manifest.json":
                 path = os.path.join(WEB_DIR, route.lstrip("/"))
                 if os.path.isfile(path):
                     self._file(path)

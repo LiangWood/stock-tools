@@ -139,7 +139,7 @@ def _rsi_divergence(close: pd.Series, period: int = 14, lookback: int = 20) -> f
 
 
 def _tech_metrics(ohlcv: pd.DataFrame | None) -> dict:
-    defaults = {"ret_20d": 0.0, "amount_ratio": 1.0, "rsi": 50.0,
+    defaults = {"ret_10d": 0.0, "ret_20d": 0.0, "amount_ratio": 1.0, "rsi": 50.0,
                 "macd_hist": 0.0, "vol_accel": 1.0, "rsi_trend": 0.0,
                 "rsi_divergence": 50.0, "breakout_score": 0.0}
     if ohlcv is None or len(ohlcv) < 2:
@@ -152,6 +152,7 @@ def _tech_metrics(ohlcv: pd.DataFrame | None) -> dict:
     if n < 2:
         return defaults
 
+    ret_10d = float((close.iloc[-1] - close.iloc[-11]) / close.iloc[-11]) if n >= 11 else 0.0
     ret_20d = float((close.iloc[-1] - close.iloc[-21]) / close.iloc[-21]) if n >= 21 else 0.0
 
     amount = close * volume
@@ -166,6 +167,7 @@ def _tech_metrics(ohlcv: pd.DataFrame | None) -> dict:
     brk      = _tw_breakout_score(close, high, volume)
 
     return {
+        "ret_10d":        ret_10d,
         "ret_20d":        ret_20d,
         "amount_ratio":   amount_ratio,
         "rsi":            rsi,
@@ -206,6 +208,7 @@ def compute_tw_scores(ticker_data: dict) -> pd.DataFrame:
             "margin_chg":     d.get("margin_chg", 0),
             # ── 技術面 ───────────────────────────────────────────────
             "day_return":     d.get("day_return", 0.0),
+            "ret_10d":        tech["ret_10d"],
             "ret_20d":        tech["ret_20d"],
             "amount_ratio":   tech["amount_ratio"],
             "rsi":            tech["rsi"],
@@ -220,6 +223,9 @@ def compute_tw_scores(ticker_data: dict) -> pd.DataFrame:
             "pe":             d.get("pe"),
             "is_limit_up":    d.get("is_limit_up",   False),
             "is_limit_down":  d.get("is_limit_down",  False),
+            "limit_up_price": d.get("limit_up_price"),
+            "limit_down_price": d.get("limit_down_price"),
+            "limit_basis":    d.get("limit_basis", "unavailable"),
         })
 
     if not rows:

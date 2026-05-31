@@ -8,7 +8,11 @@ _N = 130
 
 def _make_ohlcv(n=_N, trend="up"):
     idx = pd.date_range("2024-01-01", periods=n, freq="B")
-    close = pd.Series(np.linspace(100, 150, n) if trend == "up" else np.linspace(150, 100, n), index=idx)
+    if trend == "up":
+        values = 100 + np.linspace(0, 8, n) + np.sin(np.arange(n) / 2) * 2
+    else:
+        values = 150 - np.linspace(0, 8, n) + np.sin(np.arange(n) / 2) * 2
+    close = pd.Series(values, index=idx)
     return pd.DataFrame({
         "Open": close * 0.99, "High": close * 1.01,
         "Low": close * 0.98, "Close": close,
@@ -18,14 +22,16 @@ def _make_ohlcv(n=_N, trend="up"):
 
 def _make_stock(fi_net=0.0, it_net=0.0, margin_chg=0,
                 day_return=0.0, price=100.0, volume=1000,
-                ohlcv=None, pe=None):
+                turnover_10k=50_000.0, ohlcv=None, pe=None, **extra):
     return {
         "code": "1234", "name": "測試股",
         "price": price, "volume": volume,
         "day_return": day_return,
         "fi_net": fi_net, "it_net": it_net,
         "margin_chg": margin_chg, "pe": pe,
+        "turnover_10k": turnover_10k,
         "ohlcv": ohlcv if ohlcv is not None else _make_ohlcv(),
+        **extra,
     }
 
 
@@ -39,15 +45,47 @@ def test_has_required_columns():
     data = {"A.TW": _make_stock(), "B.TW": _make_stock()}
     result = compute_tw_scores(data)
     for col in ["ticker", "name", "price", "volume", "day_return", "pe",
-                "fi_net", "it_net", "margin_chg", "ret_20d",
-                "amount_ratio", "rsi", "tw_score"]:
+                "fi_net", "it_net", "margin_chg", "ret_10d", "ret_20d",
+                "amount_ratio", "rsi", "tw_score",
+                "is_limit_up", "is_limit_down",
+                "limit_up_price", "limit_down_price", "limit_basis"]:
         assert col in result.columns, f"Missing column: {col}"
 
 
-def test_top_20_limit():
+def test_ret_10d_is_computed_from_ohlcv():
+    data = {"A.TW": _make_stock()}
+    result = compute_tw_scores(data)
+    close = data["A.TW"]["ohlcv"]["Close"]
+    expected = float((close.iloc[-1] - close.iloc[-11]) / close.iloc[-11])
+
+    assert result.iloc[0]["ret_10d"] == pytest.approx(expected)
+
+
+def test_limit_fields_preserved_for_ui_and_mcp():
+    data = {
+        "A.TW": _make_stock(
+            is_limit_up=True,
+            is_limit_down=False,
+            limit_up_price=110.0,
+            limit_down_price=90.0,
+            limit_basis="tw-stock-agent:TWSE_TWT84U",
+        )
+    }
+
+    result = compute_tw_scores(data)
+    row = result.iloc[0]
+
+    assert row["is_limit_up"] == True
+    assert row["is_limit_down"] == False
+    assert row["limit_up_price"] == 110.0
+    assert row["limit_down_price"] == 90.0
+    assert row["limit_basis"] == "tw-stock-agent:TWSE_TWT84U"
+
+
+def test_top_n_limit():
     data = {f"T{i}.TW": _make_stock() for i in range(50)}
     result = compute_tw_scores(data)
-    assert len(result) <= 20
+    assert len(result) <= 200
 
 
 def test_sorted_descending():

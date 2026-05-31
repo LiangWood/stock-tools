@@ -100,6 +100,37 @@ def test_merge_cached_fundamentals_preserves_existing_values():
     assert aapl["peg_ratio"] == 1.5
     assert msft["pe"] is None
     assert msft["peg_ratio"] is None
+    assert msft["eps_beat"] is None
+    assert msft["eps_consecutive_beats"] is None
+    assert msft["sector_above_ema50"] is None
+
+
+def test_fetch_fund_dict_includes_context_fields(monkeypatch):
+    earnings_dates = pd.DataFrame(
+        {"Surprise(%)": [16.0, 11.0]},
+        index=pd.to_datetime(["2026-04-30", "2026-01-30"]),
+    )
+
+    class FakeTicker:
+        def __init__(self, ticker):
+            self.info = {
+                "trailingPE": 20.0,
+                "earningsGrowth": 0.25,
+                "sector": "Technology",
+            }
+            self.earnings_dates = earnings_dates
+
+    import yfinance as yf
+
+    monkeypatch.setattr(yf, "Ticker", FakeTicker)
+
+    result = server._fetch_fund_dict(["AAPL"], sector_ema_by_etf={"XLK": True})
+
+    assert result["AAPL"]["pe"] == 20.0
+    assert result["AAPL"]["peg_ratio"] == pytest.approx(0.8)
+    assert result["AAPL"]["eps_beat"] == 16.0
+    assert result["AAPL"]["eps_consecutive_beats"] is True
+    assert result["AAPL"]["sector_above_ema50"] is True
 
 
 def test_refresh_live_scores_preserves_structure(monkeypatch):
