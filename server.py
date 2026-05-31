@@ -113,6 +113,7 @@ _FUNDAMENTAL_COLUMNS = [
     "eps_beat",
     "eps_consecutive_beats",
     "sector_above_ema50",
+    "sector",
 ]
 
 
@@ -324,6 +325,7 @@ def _fetch_fund_dict(tickers: list, sector_ema_by_etf=None) -> dict:
             "eps_beat": eps_beat,
             "eps_consecutive_beats": eps_consecutive_beats,
             "sector_above_ema50": sector_above_ema50,
+            "sector": sector or "",          # 板塊名稱（Technology / Healthcare …）
         }
 
     result: dict = {}
@@ -337,6 +339,47 @@ def _fetch_fund_dict(tickers: list, sector_ema_by_etf=None) -> dict:
             with _lock:
                 _state["progress"] = f"基本面 {done}/{total}"
     return result
+
+
+def _compute_sector_metrics(scores_df) -> object:
+    """
+    板塊雙層結構：
+      sector_rs         — 板塊內所有個股 rs_rating 的平均值
+      sector_rank       — 個股在板塊內的排名，格式 'N/M'
+      sector_multiplier — 強板塊 ×1.10 / 中性 ×1.00 / 弱板塊 ×0.90
+    """
+    import pandas as pd
+
+    df = scores_df.copy()
+    if "sector" not in df.columns or "rs_rating" not in df.columns:
+        df["sector_rs"]         = 0.0
+        df["sector_rank"]       = ""
+        df["sector_multiplier"] = 1.0
+        return df
+
+    # 每個板塊的平均 rs_rating
+    sector_avg = df.groupby("sector")["rs_rating"].mean().rename("sector_rs")
+    df = df.merge(sector_avg, on="sector", how="left")
+    df["sector_rs"] = df["sector_rs"].fillna(50.0)
+
+    # 板塊內個股排名（rs_rating 降序）
+    df["sector_rank"] = df.groupby("sector")["rs_rating"].rank(
+        ascending=False, method="min"
+    ).astype(int)
+    sector_count = df.groupby("sector")["ticker"].transform("count")
+    df["sector_rank"] = df["sector_rank"].astype(str) + "/" + sector_count.astype(str)
+
+    # 板塊乘數：全部板塊的 sector_rs 做三分位
+    all_sector_rs = sector_avg.values
+    q30 = float(pd.Series(all_sector_rs).quantile(0.70))  # 前 30%
+    q70 = float(pd.Series(all_sector_rs).quantile(0.30))  # 後 30%
+    def _mult(sr: float) -> float:
+        if sr >= q30: return 1.10
+        if sr <= q70: return 0.90
+        return 1.00
+    df["sector_multiplier"] = df["sector_rs"].apply(_mult)
+
+    return df
 
 
 def _apply_fund_dict(scores_df, fund: dict):
@@ -509,6 +552,9 @@ def _fetch_worker(universe: str):
 
             # 套用快取到本次評分結果
             scores_df = _apply_fund_dict(scores_df, _fund_cache)
+            # 板塊雙層結構：sector_rs / sector_rank / sector_multiplier
+            scores_df = _compute_sector_metrics(scores_df)
+            # 加入基本面加成 + adjusted_score（板塊乘數後的最終分數）
             scores_df = apply_contextual_scoring(scores_df)
 
             # US：評分 + 基本面全部完成後才設定 done

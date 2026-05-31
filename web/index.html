@@ -639,6 +639,82 @@ td.breakout-cell {
   color: var(--gold);
 }
 
+/* 個股/板塊視角切換 */
+#view-toggle {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.view-btn {
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text1);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.12s;
+}
+.view-btn:hover { border-color: var(--accent); color: var(--accent); }
+.view-btn.active { background: var(--accent-lo); border-color: var(--accent); color: var(--accent); }
+
+/* 板塊總覽表 */
+#sector-table th {
+  background: var(--bg1);
+  color: var(--text1);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  text-align: right;
+  cursor: pointer;
+  user-select: none;
+}
+#sector-table th.left { text-align: left; }
+#sector-table td {
+  padding: 7px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text0);
+  text-align: right;
+  border-right: 1px solid rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#sector-table td.left { text-align: left; }
+#sector-table tbody tr { cursor: pointer; transition: background 0.1s; }
+#sector-table tbody tr:hover { background: var(--bg2) !important; }
+#sector-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.015); }
+/* 板塊強弱 */
+.sector-strong { color: var(--up) !important; }
+.sector-weak   { color: var(--gold) !important; }
+/* 展開的子表格 */
+.sector-drill tr { cursor: pointer; }
+.sector-drill tr:hover td { background: var(--bg2); }
+.sector-drill td { padding: 5px 10px; font-size: 11px; }
+.sector-drill td.leader { background: rgba(245,158,11,0.08); font-weight: 600; }
+.expand-btn { float: right; opacity: 0.5; font-size: 11px; transition: transform 0.2s; }
+tr.expanded .expand-btn { transform: rotate(90deg); opacity: 1; }
+
+/* FinTasticRS 新欄位樣式 */
+#scores-table td.sector-cell { color: var(--text1); font-size: 11px; text-align: left; }
+#scores-table td.sector-rs.strong { color: var(--up);   }   /* 前 30% 強板塊 */
+#scores-table td.sector-rs.weak   { color: var(--gold); }   /* 後 30% 弱板塊 */
+#scores-table td.rs-rating  { font-weight: 600; color: var(--accent); }
+#scores-table td.rs-trend   { font-size: 14px; font-weight: 700; }
+#scores-table td.rs-trend.trend-up   { color: var(--down); }   /* ↑ 紅 */
+#scores-table td.rs-trend.trend-down { color: var(--up);   }   /* ↓ 綠 */
+#scores-table td.ud-ratio   { color: var(--text0); }
+#scores-table td.ud-ratio.quality { color: var(--accent); }  /* ≥ 1.4 青色 */
+
 /* Chips columns */
 #scores-table td.chips-up   { color: var(--up);   }
 #scores-table td.chips-down { color: var(--down); }
@@ -1005,13 +1081,24 @@ td.breakout-cell {
       </div>
       <div id="table-toolbar">
         <div id="count-badge"><b id="count-num">—</b> 檔</div>
+        <!-- 個股/板塊視角切換（僅美股顯示） -->
+        <div id="view-toggle" style="display:none">
+          <button class="view-btn active" data-view="stock">個股視角</button>
+          <button class="view-btn" data-view="sector">板塊視角</button>
+        </div>
         <input id="filter-box" type="text" placeholder="搜尋代碼 / 名稱…" autocomplete="off" spellcheck="false">
         <div id="updated-label">—</div>
       </div>
       <div id="table-wrap">
+        <!-- 個股表格 -->
         <table id="scores-table">
           <thead id="t-head"></thead>
           <tbody id="t-body"></tbody>
+        </table>
+        <!-- 板塊總覽表（預設隱藏）-->
+        <table id="sector-table" style="display:none; width:100%; border-collapse:collapse; table-layout:fixed;">
+          <thead id="sector-head"></thead>
+          <tbody id="sector-body"></tbody>
         </table>
         <div id="empty-msg" class="show">點擊「刷新」載入資料</div>
       </div>
@@ -1065,21 +1152,29 @@ td.breakout-cell {
 //  COLUMN DEFINITIONS
 // ══════════════════════════════════════════════════════════════
 const US_COLS = [
-  { key:'rank',          label:'RANK',       w:'52px',  align:'center', cls:'rank-cell',   fmt:v=>v??'—', sticky:true },
-  { key:'ticker',        label:'TICKER',     w:'78px',  align:'left',   cls:'ticker-cell', fmt:v=>v||'—',  sticky:true },
-  { key:'price',         label:'PRICE',      w:'80px',  align:'right',  fmt:v=>v!=null?`$${v.toFixed(2)}`:'—' },
-  { key:'day_return',    label:'當日%',      w:'68px',  align:'right',  cls:'pct',         fmt:pct },
-  { key:'ret_10d',       label:'10日%',      w:'68px',  align:'right',  cls:'pct',         fmt:pct },
-  { key:'ret_20d',       label:'20日%',      w:'68px',  align:'right',  cls:'pct',         fmt:pct },
-  { key:'vol_1d20d',     label:'量比日/20',  w:'76px',  align:'right',  fmt:v=>v!=null?`${v.toFixed(2)}×`:'—' },
-  { key:'vol_ratio',     label:'量比5/20',   w:'76px',  align:'right',  fmt:v=>v!=null?`${v.toFixed(2)}×`:'—' },
-  { key:'rs_vs_spy',     label:'RS/SPY(1M)', w:'82px',  align:'right',  cls:'pct',         fmt:pct },
-  { key:'rs_5d_vs_spy',  label:'RS/SPY(5D)', w:'82px',  align:'right',  cls:'pct',         fmt:pct },
-  { key:'rsi',           label:'RSI',        w:'58px',  align:'right',  cls:'rsi',         fmt:v=>v!=null?v.toFixed(1):'—' },
-  { key:'pe',            label:'P/E',    w:'60px', align:'right', fmt:v=>v!=null?v.toFixed(1):'—' },
-  { key:'peg_ratio',     label:'PEG',      w:'60px',  align:'right', fmt:v=>v!=null?v.toFixed(2):'—' },
-  { key:'breakout_score',label:'BREAKOUT', w:'90px',  align:'right', cls:'breakout', fmt:v=>v!=null?v.toFixed(1):'—' },
-  { key:'momentum_score',label:'SCORE',   w:'116px', align:'right', cls:'score', fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
+  { key:'rank',           label:'RANK',        w:'52px',  align:'center', cls:'rank-cell',    fmt:v=>v??'—', sticky:true },
+  { key:'ticker',         label:'TICKER',      w:'78px',  align:'left',   cls:'ticker-cell',  fmt:v=>v||'—', sticky:true },
+  { key:'sector',         label:'SECTOR',      w:'110px', align:'left',   cls:'sector-cell',  fmt:v=>v||'—' },
+  { key:'sector_rs',      label:'SECTOR RS',   w:'78px',  align:'right',  cls:'sector-rs',    fmt:v=>v!=null?v.toFixed(1):'—' },
+  { key:'sector_rank',    label:'S.RANK',      w:'64px',  align:'center',                     fmt:v=>v||'—' },
+  { key:'price',          label:'PRICE',       w:'80px',  align:'right',  fmt:v=>v!=null?`$${Number.isInteger(v)?v:v.toFixed(2)}`:'—' },
+  { key:'day_return',     label:'當日%',       w:'68px',  align:'right',  cls:'pct',          fmt:pct },
+  { key:'ret_10d',        label:'10日%',       w:'68px',  align:'right',  cls:'pct',          fmt:pct },
+  { key:'ret_20d',        label:'20日%',       w:'68px',  align:'right',  cls:'pct',          fmt:pct },
+  { key:'vol_1d20d',      label:'量比日/20',   w:'76px',  align:'right',  fmt:v=>v!=null?`${v.toFixed(2)}×`:'—' },
+  { key:'vol_ratio',      label:'量比5/20',    w:'76px',  align:'right',  fmt:v=>v!=null?`${v.toFixed(2)}×`:'—' },
+  { key:'rs_vs_spy',      label:'RS/SPY(1M)',  w:'82px',  align:'right',  cls:'pct',          fmt:pct },
+  { key:'rs_5d_vs_spy',   label:'RS/SPY(5D)',  w:'82px',  align:'right',  cls:'pct',          fmt:pct },
+  { key:'rs_rating',      label:'RS RATING',   w:'82px',  align:'right',  cls:'rs-rating',    fmt:v=>v!=null?v.toFixed(1):'—' },
+  { key:'rs_trend',       label:'RS趨勢',      w:'58px',  align:'center', cls:'rs-trend',     fmt:v=>v||'—' },
+  { key:'rs_breakout',    label:'RS翻強',      w:'58px',  align:'center',                     fmt:v=>v===true?'🔥':'—' },
+  { key:'ud_ratio_60d',   label:'60U/D',       w:'62px',  align:'right',  cls:'ud-ratio',     fmt:v=>v!=null?v.toFixed(2):'—' },
+  { key:'rsi',            label:'RSI',         w:'58px',  align:'right',  cls:'rsi',          fmt:v=>v!=null?v.toFixed(1):'—' },
+  { key:'pe',             label:'P/E',         w:'60px',  align:'right',  fmt:v=>v!=null?v.toFixed(1):'—' },
+  { key:'peg_ratio',      label:'PEG',         w:'60px',  align:'right',  fmt:v=>v!=null?v.toFixed(2):'—' },
+  { key:'breakout_score', label:'BREAKOUT',    w:'88px',  align:'right',  cls:'breakout',     fmt:v=>v!=null?v.toFixed(1):'—' },
+  { key:'momentum_score', label:'SCORE',       w:'80px',  align:'right',  cls:'score',        fmt:v=>v!=null?v.toFixed(1):'—' },
+  { key:'adjusted_score', label:'ADJ.SCORE',   w:'116px', align:'right',  cls:'score',        fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
 ];
 
 const TW_COLS = [
@@ -1134,7 +1229,7 @@ let emaSeries    = {};
 //  HELPERS
 // ══════════════════════════════════════════════════════════════
 function cols()     { return S.universe === 'tw' ? TW_COLS : US_COLS; }
-function scoreKey() { return S.universe === 'tw' ? 'tw_score' : 'momentum_score'; }
+function scoreKey() { return S.universe === 'tw' ? 'tw_score' : 'adjusted_score'; }
 
 function applyFilter() {
   const q = document.getElementById('filter-box').value.trim().toLowerCase();
@@ -1370,6 +1465,20 @@ function renderBody(opts = {}) {
       // 漲停 / 跌停底色：只套在 price 和 day_return 欄位
       if (_limitUp   && (col.key === 'price' || col.key === 'day_return')) td.classList.add('limit-up');
       if (_limitDown && (col.key === 'price' || col.key === 'day_return')) td.classList.add('limit-down');
+
+      // FinTasticRS 新欄位著色
+      if (col.key === 'sector_rs' && val != null) {
+        const mult = row.sector_multiplier;
+        if (mult >= 1.10) td.classList.add('strong');
+        else if (mult <= 0.90) td.classList.add('weak');
+      }
+      if (col.key === 'rs_trend' && val) {
+        if (val === '↑') td.classList.add('trend-up');
+        else if (val === '↓') td.classList.add('trend-down');
+      }
+      if (col.key === 'ud_ratio_60d' && val != null && val >= 1.4) {
+        td.classList.add('quality');
+      }
 
       // 台股融資增減：正值=紅（漲色），負值=綠（跌色）
       if (S.universe === 'tw' && col.key === 'margin_chg' && val != null) {
@@ -1891,8 +2000,15 @@ async function loadScores(opts = {}) {
   S.scores = d.scores || [];
   if (opts.resetSort !== false) S.sortKey = null;
   applyFilter();
-  renderHead();
-  renderBody({ animate: opts.animate === true });
+  // 顯示/隱藏切換按鈕（僅美股）
+  const toggle = document.getElementById('view-toggle');
+  if (toggle) toggle.style.display = S.universe === 'tw' ? 'none' : 'flex';
+  if (_sectorView && S.universe !== 'tw') {
+    renderSectorView();
+  } else {
+    renderHead();
+    renderBody({ animate: opts.animate === true });
+  }
 }
 
 function stopLiveRefresh() {
@@ -1952,6 +2068,155 @@ async function bootstrapExistingScores() {
 // ══════════════════════════════════════════════════════════════
 //  EVENT WIRING
 // ══════════════════════════════════════════════════════════════
+// ── 個股 / 板塊視角切換 ──────────────────────────────────────────────────────
+let _sectorView = false;
+
+function setSectorView(on) {
+  _sectorView = on;
+  document.getElementById('scores-table').style.display = on ? 'none' : '';
+  document.getElementById('sector-table').style.display = on ? '' : 'none';
+  document.querySelectorAll('.view-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === (on ? 'sector' : 'stock'));
+  });
+  if (on) renderSectorView();
+}
+
+function renderSectorView() {
+  // 聚合板塊資料
+  const sectorMap = {};
+  S.scores.forEach(r => {
+    const s = r.sector || 'Other';
+    if (!sectorMap[s]) sectorMap[s] = { name: s, stocks: [], rs_sum: 0 };
+    sectorMap[s].stocks.push(r);
+    sectorMap[s].rs_sum += (r.rs_rating || 0);
+  });
+  const sectors = Object.values(sectorMap).map(s => ({
+    ...s,
+    sector_rs:   s.rs_sum / s.stocks.length,
+    count:       s.stocks.length,
+    avg_1d:      s.stocks.reduce((a,r)=>a+(r.day_return||0),0)/s.stocks.length,
+    avg_20d:     s.stocks.reduce((a,r)=>a+(r.ret_20d||0),0)/s.stocks.length,
+    avg_ud:      s.stocks.reduce((a,r)=>a+(r.ud_ratio_60d||1),0)/s.stocks.length,
+    top3:        [...s.stocks].sort((a,b)=>(b.rs_rating||0)-(a.rs_rating||0)).slice(0,3).map(r=>r.ticker).join(' / '),
+    multiplier:  s.stocks[0]?.sector_multiplier ?? 1.0,
+  })).sort((a,b) => b.sector_rs - a.sector_rs);
+
+  const allRS  = sectors.map(s => s.sector_rs);
+  const q70    = allRS.slice().sort((a,b)=>b-a)[Math.floor(allRS.length*0.30)] || 70;
+  const q30    = allRS.slice().sort((a,b)=>b-a)[Math.floor(allRS.length*0.70)] || 30;
+
+  // Render header
+  const thead = document.getElementById('sector-head');
+  thead.innerHTML = `<tr>
+    <th style="width:36px" class="center">RANK</th>
+    <th style="width:140px" class="left">SECTOR</th>
+    <th style="width:76px">SECTOR RS</th>
+    <th style="width:54px">STOCKS</th>
+    <th style="width:72px">AVG 當日%</th>
+    <th style="width:72px">AVG 20日%</th>
+    <th style="width:64px">AVG 60U/D</th>
+    <th style="width:160px" class="left">TOP 3</th>
+    <th style="width:76px">MULTIPLIER</th>
+    <th style="width:32px"></th>
+  </tr>`;
+
+  // Render body
+  const tbody = document.getElementById('sector-body');
+  tbody.innerHTML = '';
+  sectors.forEach((s, i) => {
+    const isStrong = s.sector_rs >= q70;
+    const isWeak   = s.sector_rs <= q30;
+    const rsClass  = isStrong ? 'sector-strong' : (isWeak ? 'sector-weak' : '');
+    const multStr  = s.multiplier >= 1.05 ? '×1.10 ▲' : (s.multiplier <= 0.95 ? '×0.90 ▼' : '×1.00');
+    const multCol  = s.multiplier >= 1.05 ? 'color:var(--up)' : (s.multiplier <= 0.95 ? 'color:var(--gold)' : 'color:var(--text1)');
+
+    const tr = document.createElement('tr');
+    tr.dataset.sector = s.name;
+    tr.innerHTML = `
+      <td class="center" style="color:var(--text2)">${i+1}</td>
+      <td class="left" style="font-weight:600">${s.name} <span class="expand-btn">›</span></td>
+      <td class="${rsClass}">${s.sector_rs.toFixed(1)}</td>
+      <td>${s.count}</td>
+      <td class="${s.avg_1d>=0?'up':'down'}">${(s.avg_1d*100).toFixed(2)}%</td>
+      <td class="${s.avg_20d>=0?'up':'down'}">${(s.avg_20d*100).toFixed(2)}%</td>
+      <td style="${s.avg_ud>=1.4?'color:var(--accent)':''}">${s.avg_ud.toFixed(2)}</td>
+      <td class="left" style="color:var(--text1);font-size:11px">${s.top3}</td>
+      <td style="${multCol};font-weight:600">${multStr}</td>
+      <td></td>
+    `;
+
+    tr.addEventListener('click', () => toggleSectorDrill(tr, s));
+    tbody.appendChild(tr);
+  });
+}
+
+function toggleSectorDrill(tr, sector) {
+  const existing = tr.nextSibling;
+  if (existing && existing.classList?.contains('sector-drill-row')) {
+    existing.remove();
+    tr.classList.remove('expanded');
+    return;
+  }
+  // 收合其他展開的板塊
+  document.querySelectorAll('.sector-drill-row').forEach(r => r.remove());
+  document.querySelectorAll('#sector-body tr.expanded').forEach(r => r.classList.remove('expanded'));
+  tr.classList.add('expanded');
+
+  // 排序板塊內個股（rs_rating 降序）
+  const stocks = [...sector.stocks].sort((a,b) => (b.rs_rating||0)-(a.rs_rating||0));
+  const total  = stocks.length;
+  const drillTr = document.createElement('tr');
+  drillTr.className = 'sector-drill-row';
+
+  const td = document.createElement('td');
+  td.colSpan = 10;
+  td.style.padding = '0';
+  td.style.background = 'var(--bg0)';
+
+  const inner = document.createElement('table');
+  inner.className = 'sector-drill';
+  inner.style.cssText = 'width:100%;border-collapse:collapse;';
+  inner.innerHTML = `<thead><tr style="background:var(--bg2)">
+    <th style="width:60px;padding:5px 10px;font-size:10px;color:var(--text1);text-align:center">S.RANK</th>
+    <th style="width:80px;padding:5px 10px;font-size:10px;color:var(--text1);text-align:left">TICKER</th>
+    <th style="width:80px;padding:5px 10px;font-size:10px;color:var(--text1);text-align:right">PRICE</th>
+    <th style="width:68px;padding:5px 10px;font-size:10px;color:var(--text1);text-align:right">當日%</th>
+    <th style="width:68px;padding:5px 10px;font-size:10px;color:var(--text1);text-align:right">20日%</th>
+    <th style="width:76px;padding:5px 10px;font-size:10px;color:var(--text1);text-align:right">RS RATING</th>
+    <th style="width:58px;padding:5px 10px;font-size:10px;color:var(--text1);text-align:center">RS趨勢</th>
+    <th style="width:58px;padding:5px 10px;font-size:10px;color:var(--text1);text-align:center">RS翻強</th>
+    <th style="width:62px;padding:5px 10px;font-size:10px;color:var(--text1);text-align:right">60U/D</th>
+    <th style="width:90px;padding:5px 10px;font-size:10px;color:var(--text1);text-align:right">ADJ.SCORE</th>
+  </tr></thead><tbody>${
+    stocks.map((r, idx) => {
+      const rank    = idx + 1;
+      const isLead  = rank <= 3;
+      const cls     = isLead ? 'leader' : '';
+      const trendCl = r.rs_trend === '↑' ? 'color:var(--down)' : (r.rs_trend === '↓' ? 'color:var(--up)' : 'color:var(--text1)');
+      const udCol   = (r.ud_ratio_60d||0) >= 1.4 ? 'color:var(--accent)' : '';
+      const pUp     = (r.day_return||0) >= 0;
+      const p20Up   = (r.ret_20d||0) >= 0;
+      return `<tr onclick="pickTicker('${r.ticker}')">
+        <td class="${cls}" style="text-align:center;color:${isLead?'var(--gold)':'var(--text2)'}">${rank}/${total}</td>
+        <td class="${cls}" style="text-align:left;color:var(--accent);font-weight:600">${r.ticker}</td>
+        <td style="text-align:right">$${r.price!=null?(Number.isInteger(r.price)?r.price:r.price.toFixed(2)):'—'}</td>
+        <td style="text-align:right;color:${pUp?'var(--up)':'var(--down)'}">${((r.day_return||0)*100).toFixed(2)}%</td>
+        <td style="text-align:right;color:${p20Up?'var(--up)':'var(--down)'}">${((r.ret_20d||0)*100).toFixed(2)}%</td>
+        <td style="text-align:right;color:var(--accent);font-weight:600">${r.rs_rating!=null?r.rs_rating.toFixed(1):'—'}</td>
+        <td style="text-align:center;${trendCl};font-size:13px;font-weight:700">${r.rs_trend||'—'}</td>
+        <td style="text-align:center">${r.rs_breakout?'🔥':'—'}</td>
+        <td style="text-align:right;${udCol}">${r.ud_ratio_60d!=null?r.ud_ratio_60d.toFixed(2):'—'}</td>
+        <td style="text-align:right;font-weight:600;color:var(--accent)">${r.adjusted_score!=null?r.adjusted_score.toFixed(1):'—'}</td>
+      </tr>`;
+    }).join('')
+  }</tbody>`;
+
+  td.appendChild(inner);
+  drillTr.appendChild(td);
+  tr.after(drillTr);
+}
+
+// ── universe tab 切換時重置視角 ─────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => {
     stopLiveRefresh();
@@ -1960,6 +2225,11 @@ document.querySelectorAll('.tab').forEach(btn => {
     S.universe = btn.dataset.u;
     S.scores = []; S.filteredScores = [];
     S.selectedTicker = null; S.ohlcvData = null;
+    // 切換時回到個股視角，並顯示/隱藏切換按鈕
+    _sectorView = false;
+    setSectorView(false);
+    const toggle = document.getElementById('view-toggle');
+    toggle.style.display = S.universe === 'tw' ? 'none' : 'flex';
     renderHead(); renderBody();
     document.getElementById('chart-symbol').textContent     = '—';
     document.getElementById('chart-live-price').textContent = '';
@@ -1974,7 +2244,13 @@ document.querySelectorAll('.tab').forEach(btn => {
 document.getElementById('refresh-btn').addEventListener('click', startFetch);
 
 document.getElementById('filter-box').addEventListener('input', () => {
-  renderBody();
+  if (_sectorView) renderSectorView();
+  else renderBody();
+});
+
+// 個股/板塊視角切換按鈕
+document.querySelectorAll('.view-btn').forEach(btn => {
+  btn.addEventListener('click', () => setSectorView(btn.dataset.view === 'sector'));
 });
 
 // History range buttons (re-fetch on change)
