@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from data.fetcher import fetch_all
 from data.twse_fetcher import fetch_tw_all
 from data.universe import get_combined_tickers, get_nasdaq100_tickers, get_sp500_tickers
-from scoring.engine import apply_contextual_scoring, compute_scores
+from scoring.engine import apply_contextual_scoring, compute_scores, compute_breakout_candidates
 from scoring.tw_engine import compute_tw_scores
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,7 @@ _state: dict = {
     "status": "idle",
     "progress": "",
     "scores": [],
+    "breakout_candidates": [],   # 全 universe 突破觀察清單
     "ohlcv": {},
     "universe": "sp500",
     "last_updated": None,
@@ -107,6 +108,21 @@ SECTOR_ETF_MAP = {
     "Communication Services": "XLC",
 }
 
+# 板塊英文 → 繁體中文翻譯
+SECTOR_ZH: dict[str, str] = {
+    "Technology":             "科技",
+    "Financial Services":     "金融服務",
+    "Healthcare":             "醫療保健",
+    "Consumer Cyclical":      "非必需消費",
+    "Consumer Defensive":     "必需消費",
+    "Energy":                 "能源",
+    "Industrials":            "工業",
+    "Basic Materials":        "基本材料",
+    "Real Estate":            "房地產",
+    "Utilities":              "公用事業",
+    "Communication Services": "通訊服務",
+}
+
 _FUNDAMENTAL_COLUMNS = [
     "pe",
     "peg_ratio",
@@ -114,6 +130,7 @@ _FUNDAMENTAL_COLUMNS = [
     "eps_consecutive_beats",
     "sector_above_ema50",
     "sector",
+    "sector_zh",   # 板塊（繁體中文翻譯）
 ]
 
 
@@ -319,13 +336,15 @@ def _fetch_fund_dict(tickers: list, sector_ema_by_etf=None) -> dict:
                 pass
         except Exception:
             pass
+        sector_name = sector or ""
         return ticker, {
             "pe": pe,
             "peg_ratio": peg_ratio,
             "eps_beat": eps_beat,
             "eps_consecutive_beats": eps_consecutive_beats,
             "sector_above_ema50": sector_above_ema50,
-            "sector": sector or "",          # 板塊名稱（Technology / Healthcare …）
+            "sector": sector_name,
+            "sector_zh": SECTOR_ZH.get(sector_name, sector_name),  # 繁體中文板塊名稱
         }
 
     result: dict = {}
@@ -367,7 +386,7 @@ def _compute_sector_metrics(scores_df) -> object:
         ascending=False, method="min"
     ).astype(int)
     sector_count = df.groupby("sector")["ticker"].transform("count")
-    df["sector_rank"] = df["sector_rank"].astype(str) + "/" + sector_count.astype(str)
+    df["sector_rank"] = df["sector_rank"].astype(str)   # 只顯示排名，不附 /N
 
     # 板塊乘數：全部板塊的 sector_rs 做三分位
     all_sector_rs = sector_avg.values
@@ -522,6 +541,10 @@ def _fetch_worker(universe: str):
             with _lock:
                 _state["progress"] = "計算動能分數…"
             scores_df = compute_scores(raw)
+            # 突破觀察：全 universe 原始篩選，不受 TOP_N 限制
+            with _lock:
+                _state["progress"] = "掃描突破候選…"
+            breakout_df = compute_breakout_candidates(raw)
             with _lock:
                 _state["progress"] = "整理 K 線資料…"
             ohlcv = {t: _ohlcv_to_json(df) for t, df in raw.items()}
@@ -559,12 +582,13 @@ def _fetch_worker(universe: str):
 
             # US：評分 + 基本面全部完成後才設定 done
             with _lock:
-                _state["status"]       = "done"
-                _state["scores"]       = _df_to_records(scores_df)
-                _state["ohlcv"]        = {k: v for k, v in ohlcv.items() if v}
-                _state["universe"]     = universe
-                _state["last_updated"] = datetime.now().strftime("%H:%M:%S")
-                _state["progress"]     = "完成"
+                _state["status"]             = "done"
+                _state["scores"]             = _df_to_records(scores_df)
+                _state["breakout_candidates"] = _df_to_records(breakout_df) if not breakout_df.empty else []
+                _state["ohlcv"]              = {k: v for k, v in ohlcv.items() if v}
+                _state["universe"]           = universe
+                _state["last_updated"]       = datetime.now().strftime("%H:%M:%S")
+                _state["progress"]           = "完成"
 
     except Exception as exc:
         logger.exception("Fetch worker error")
@@ -624,6 +648,10 @@ class Handler(BaseHTTPRequestHandler):
             elif route == "/api/scores":
                 with _lock:
                     self._json({"universe": _state["universe"], "scores": _state["scores"]})
+
+            elif route == "/api/breakout-candidates":
+                with _lock:
+                    self._json({"candidates": _state.get("breakout_candidates", [])})
 
             elif route == "/api/ohlcv":
                 ticker = params.get("ticker", [""])[0]
@@ -701,6 +729,27 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             logger.exception("Handler error: %s", route)
             self._respond(500, "text/plain", b"Internal Server Error")
+
+    def do_POST(self):
+        """POST /api/patch-scores — merge MCP data into existing scores."""
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/patch-scores":
+            self._respond(404, "text/plain", b"Not Found")
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body   = self.rfile.read(length)
+            patch  = json.loads(body)           # {ticker: {field: val, ...}}
+            count  = 0
+            with _lock:
+                for row in _state["scores"]:
+                    ticker = row.get("ticker", "")
+                    if ticker in patch:
+                        row.update(patch[ticker])
+                        count += 1
+            self._json({"updated": count})
+        except Exception as exc:
+            self._json({"error": str(exc)}, 400)
 
 
 def main():

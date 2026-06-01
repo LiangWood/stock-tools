@@ -4,17 +4,20 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-# ── FinTasticRS v3.0 評分權重 ─────────────────────────────────────────────────
-# 資金行為指標優先於技術落後指標
+# ── FinTasticRS v3.1 評分權重 ─────────────────────────────────────────────────
+# RS Rating：純斜率趨勢強度（不含 breakout）
+# breakout_score：獨立管道，與 RS Rating 分開貢獻
 _WEIGHTS = {
-    "_rs_rating_rank":     0.20,  # FinTasticRS 五指標加權動能分數
+    "_rs_rating_rank":     0.18,  # FinTasticRS 純斜率動能（趨勢持續性）
+    "_breakout_rank":      0.12,  # 量價突破確認（獨立管道，捕捉急拉型）
     "_ema_align":          0.15,  # EMA 21/50 多頭排列
-    "_vol1d_rank":         0.15,  # 今日量比
+    "_vol1d_rank":         0.13,  # 今日量比
     "_rs_trend_score":     0.10,  # RS 趨勢方向（momentum_shift）
-    "_rs_breakout_score":  0.10,  # RS 翻強旗標（早期輪動）
-    "_vol_rank":           0.10,  # 5日量比
-    "_rsi_rank":           0.10,  # RSI 時機確認
-    "_eps_beat_rank":      0.10,  # EPS 超預期（落後指標，基本面支撐）
+    "_rs_breakout_score":  0.08,  # RS 翻強旗標（早期輪動）
+    "_vol_rank":           0.09,  # 5日量比
+    "_rsi_rank":           0.08,  # RSI 時機確認
+    "_eps_beat_rank":      0.07,  # EPS 超預期（基本面支撐）
+    # 合計 = 1.00
 }
 
 _CONTEXT_WEIGHTS = {
@@ -24,7 +27,7 @@ _CONTEXT_WEIGHTS = {
     "_earnings_score":    0.06,
 }
 
-TOP_N = 100
+TOP_N = 100          # Layer 1：依 FinTasticRS RS Rank 取前 100 檔
 
 
 # ── 基本面評分函數 ────────────────────────────────────────────────────────────
@@ -170,12 +173,16 @@ def _ema_alignment_score(close: pd.Series) -> float:
     return score
 
 
-def _passes_hard_filter(close: pd.Series) -> bool:
+def _passes_quality_filter(close: pd.Series) -> bool:
+    """Layer 1 only keeps rows with enough valid price history."""
+    return len(close) >= 120 and float(close.iloc[-1]) > 0
+
+
+def _passes_technical_filter(close: pd.Series) -> bool:
     """
-    FinTasticRS v3.0 硬性過濾：
-    1. 股價 > EMA50 × 0.98（季線生死線，允許 2% 緩衝）
-    2. EMA21 > EMA50（短中期多頭排列）
-    3. 最少 105 天資料
+    技術面加成硬性過濾：
+    1. 資料至少 105 天
+    2. price > EMA50 × 0.98、EMA21 > EMA50、price > EMA100 任一成立
     """
     if len(close) < 105:
         return False
@@ -258,11 +265,12 @@ def _metrics_for(
     high   = df["High"].dropna() if "High" in df.columns else close
     low    = df["Low"].dropna()  if "Low"  in df.columns else close
 
-    if not _passes_hard_filter(close):
+    if not _passes_quality_filter(close):
         return None
 
     n     = len(close)
     price = float(close.iloc[-1])
+    pass_technical = _passes_technical_filter(close)
 
     day_return = float((close.iloc[-1] - close.iloc[-2])  / close.iloc[-2])  if n >= 2  else 0.0
     ret_10d    = float((close.iloc[-1] - close.iloc[-11]) / close.iloc[-11]) if n >= 11 else 0.0
@@ -329,6 +337,7 @@ def _metrics_for(
         "ud_ratio_60d": ud_60d,
         "p_20ma":       p_20ma,
         "p_60ma":       p_60ma,
+        "pass_technical": pass_technical,
         # 內部評分（前綴 _ 在輸出時會被移除）
         "_macd_score": _macd_score(close),
         "_ema_align":  _ema_alignment_score(close),
@@ -344,6 +353,7 @@ def compute_scores(ticker_data: dict) -> pd.DataFrame:
               "slope_20d", "slope_60d", "slope_120d", "ud_ratio_60d",
               "p_20ma", "p_60ma",
               "rs_rating", "momentum_shift", "rs_trend", "rs_breakout",
+              "pass_technical",
               "momentum_score"]
     _empty = pd.DataFrame(columns=_cols)
 
@@ -386,7 +396,8 @@ def compute_scores(ticker_data: dict) -> pd.DataFrame:
     # EPS beat placeholder（server.py 合入基本面後才有值）
     df["_eps_beat_rank"] = 50.0
 
-    # ── FinTasticRS RS Rating ────────────────────────────────────────────────
+    # ── FinTasticRS RS Rating（v3.1 純斜率版）───────────────────────────────────
+    # 回歸本意：衡量趨勢持續強度，不含 breakout（breakout 已移至 _WEIGHTS 獨立計分）
     slope60_pct  = df["slope_60d"].rank(pct=True)
     slope120_pct = df["slope_120d"].rank(pct=True)
     slope20_pct  = df["slope_20d"].rank(pct=True)
@@ -394,18 +405,22 @@ def compute_scores(ticker_data: dict) -> pd.DataFrame:
     ud_pct       = df["ud_ratio_60d"].rank(pct=True)
 
     rs_raw = (
-        slope60_pct  * 0.50 +
-        slope120_pct * 0.30 +
-        slope20_pct  * 0.10 +
-        p20ma_pct    * 0.05 +
-        ud_pct       * 0.05
+        slope60_pct  * 0.35 +   # 60日斜率（主力，趨勢品質）
+        slope120_pct * 0.25 +   # 120日斜率（長期持續性）
+        slope20_pct  * 0.25 +   # 20日斜率（短期動能，兼顧剛啟動標的）
+        p20ma_pct    * 0.08 +   # 價格位置 vs EMA20
+        ud_pct       * 0.07     # 風報比（上行/下行波動）
+        # 合計 1.00，RS Rating = 純斜率趨勢強度
     )
     rs_min, rs_max = rs_raw.min(), rs_raw.max()
     df["rs_rating"] = (
         ((rs_raw - rs_min) / (rs_max - rs_min) * 100).clip(0, 100)
         if rs_max > rs_min else pd.Series(50.0, index=df.index)
     )
-    df["_rs_rating_rank"] = df["rs_rating"]  # 已是 0-100，直接用
+    df["_rs_rating_rank"] = df["rs_rating"]  # 已是 0-100，純斜率趨勢強度
+
+    # ── breakout_score 獨立排名（_WEIGHTS 的獨立管道）────────────────────────
+    df["_breakout_rank"] = df["breakout_score"].rank(pct=True) * 100
 
     # ── Momentum Shift → RS 趨勢 ─────────────────────────────────────────────
     # momentum_shift = (S + 5 − M) / 2 + (M − L) + (L − XL)
@@ -431,16 +446,6 @@ def compute_scores(ticker_data: dict) -> pd.DataFrame:
     )
     df["_rs_breakout_score"] = df["rs_breakout"].map({True: 100.0, False: 0.0})
 
-    # ── 乖離度保護：P/20ma < 1.10（FinTasticRS 核心保護條件）────────────────
-    df = df[df["p_20ma"] < 1.10]
-    # 季線守護：P/60ma > 1.00
-    df = df[df["p_60ma"] > 1.00]
-    # 風報比過濾：ud_ratio_60d ≥ 1.4
-    df = df[df["ud_ratio_60d"] >= 1.4]
-
-    if df.empty:
-        return _empty
-
     # ── 技術分 ───────────────────────────────────────────────────────────────
     score_cols = list(_WEIGHTS.keys())
     weights    = np.array(list(_WEIGHTS.values()))
@@ -449,12 +454,69 @@ def compute_scores(ticker_data: dict) -> pd.DataFrame:
 
     result = (
         df.drop(columns=[c for c in df.columns if c.startswith("_")])
-        .sort_values("momentum_score", ascending=False)
+        .sort_values("rs_rating", ascending=False)
         .head(TOP_N)
         .reset_index(drop=True)
     )
     result["rank"] = range(1, len(result) + 1)
     return result
+
+
+# ── 突破觀察：全 universe 原始篩選（不受 RS 排名 / TOP_N 限制）──────────────
+
+def compute_breakout_candidates(ticker_data: dict) -> pd.DataFrame:
+    """
+    掃描全 universe 所有股票，篩出反轉突破型候選。
+    不套用 RS Rating 排名或 TOP_N 截斷，直接用原始技術指標過濾。
+
+    篩選條件：
+      slope_20d > 0       近期 20 日趨勢翻多
+      slope_60d < 0.05    前期 60 日仍偏弱（反轉前期）
+      breakout_score > 50 量價突破確認
+    """
+    rows = []
+    for ticker, df in ticker_data.items():
+        if ticker == "SPY" or df is None or df.empty:
+            continue
+        close = df["Close"].dropna()
+        if len(close) < 60 or float(close.iloc[-1]) <= 0:
+            continue
+
+        high = df["High"].dropna() if "High" in df.columns else close
+        low  = df["Low"].dropna()  if "Low"  in df.columns else close
+        vol  = df["Volume"].dropna()
+
+        s20 = _linear_slope(close, 20)
+        s60 = _linear_slope(close, 60)
+        bk  = _breakout_score(close, high, low, vol)
+
+        if s20 <= 0 or s60 >= 0.05 or bk <= 50:
+            continue
+
+        n = len(close)
+        price = float(close.iloc[-1])
+        day_return = float((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2]) if n >= 2 else 0.0
+        ret_20d    = float((close.iloc[-1] - close.iloc[-21]) / close.iloc[-21]) if n >= 21 else 0.0
+        rsi        = calculate_rsi(close)
+
+        rows.append({
+            "ticker":        ticker,
+            "price":         price,
+            "day_return":    day_return,
+            "ret_20d":       ret_20d,
+            "slope_20d":     s20,
+            "slope_60d":     s60,
+            "breakout_score": bk,
+            "rsi":           rsi,
+        })
+
+    if not rows:
+        return pd.DataFrame()
+    return (
+        pd.DataFrame(rows)
+        .sort_values("breakout_score", ascending=False)
+        .reset_index(drop=True)
+    )
 
 
 # ── 板塊加成後的最終評分 ──────────────────────────────────────────────────────
