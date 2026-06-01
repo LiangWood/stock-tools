@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import pytest
-from scoring.tw_engine import compute_tw_scores
+from scoring.tw_engine import compute_tw_breakout_candidates, compute_tw_rs_scores, compute_tw_scores
 
 _N = 130
 
@@ -59,6 +59,30 @@ def test_ret_10d_is_computed_from_ohlcv():
     expected = float((close.iloc[-1] - close.iloc[-11]) / close.iloc[-11])
 
     assert result.iloc[0]["ret_10d"] == pytest.approx(expected)
+
+
+def test_tw_rs_day_return_uses_exchange_quote_not_ohlcv():
+    ohlcv = _make_ohlcv()
+    ohlcv.loc[ohlcv.index[-2], "Close"] = 100.0
+    ohlcv.loc[ohlcv.index[-1], "Close"] = 106.0
+    data = {"A.TW": _make_stock(day_return=0.1, ohlcv=ohlcv)}
+
+    result = compute_tw_rs_scores(data)
+
+    assert result.iloc[0]["day_return"] == pytest.approx(0.1)
+
+
+def test_tw_breakout_day_return_uses_exchange_quote_not_ohlcv(monkeypatch):
+    monkeypatch.setattr("scoring.tw_engine._linear_slope", lambda _series, window: 0.01 if window == 20 else -0.01)
+    monkeypatch.setattr("scoring.tw_engine._breakout_score", lambda *_args, **_kwargs: 80.0)
+    ohlcv = _make_ohlcv(n=90, trend="up")
+    ohlcv.loc[ohlcv.index[-2], "Close"] = 100.0
+    ohlcv.loc[ohlcv.index[-1], "Close"] = 106.0
+    data = {"A.TW": _make_stock(day_return=0.1, ohlcv=ohlcv)}
+
+    result = compute_tw_breakout_candidates(data)
+
+    assert result.iloc[0]["day_return"] == pytest.approx(0.1)
 
 
 def test_limit_fields_preserved_for_ui_and_mcp():

@@ -41,6 +41,34 @@ TWSE_QUOTE_OK = [
     },
 ]
 
+TWSE_MI_INDEX_OK = {
+    "stat": "OK",
+    "date": "20260601",
+    "tables": [
+        {
+            "title": "115年06月01日 價格指數(臺灣證券交易所)",
+            "fields": ["指數", "收盤指數"],
+            "data": [["寶島股價指數", "50,741.92"]],
+        },
+        {
+            "title": "115年06月01日 每日收盤行情(全部(不含權證、牛熊證、可展延牛熊證))",
+            "fields": [
+                "證券代號", "證券名稱", "成交股數", "成交筆數", "成交金額",
+                "開盤價", "最高價", "最低價", "收盤價", "漲跌(+/-)", "漲跌價差",
+                "最後揭示買價", "最後揭示買量", "最後揭示賣價", "最後揭示賣量", "本益比",
+            ],
+            "data": [
+                ["2330", "台積電", "32,150,000", "45,678", "31,507,000,000",
+                 "975.00", "985.00", "972.00", "980.00", "<p style= color:red>+</p>", "5.00",
+                 "979.00", "22", "980.00", "118", "25.12"],
+                ["2454", "聯發科", "8,420,000", "12,345", "10,146,100,000",
+                 "1200.00", "1210.00", "1195.00", "1205.00", "<p style= color:green>-</p>", "15.00",
+                 "1200.00", "5", "1205.00", "8", "18.5"],
+            ],
+        },
+    ],
+}
+
 TWSE_CHIPS_OK = {
     "stat": "OK",
     "fields": ["證券代號", "證券名稱",
@@ -109,6 +137,18 @@ def test_parse_twse_quote_day_return_negative():
     assert result["2454"]["day_return"] == pytest.approx(-15.0 / (1205.0 + 15.0), rel=1e-3)
 
 
+def test_parse_twse_quote_mi_index_table_latest_close():
+    result = _parse_twse_quote(TWSE_MI_INDEX_OK)
+
+    assert result["2330"]["price"] == 980.0
+    assert result["2330"]["volume"] == 32150
+    assert result["2330"]["high"] == 985.0
+    assert result["2330"]["low"] == 972.0
+    assert result["2330"]["turnover_10k"] == 3_150_700.0
+    assert result["2330"]["day_return"] == pytest.approx(5.0 / (980.0 - 5.0), rel=1e-3)
+    assert result["2454"]["day_return"] == pytest.approx(-15.0 / (1205.0 + 15.0), rel=1e-3)
+
+
 def test_parse_twse_quote_pe_none_when_dash():
     data = [
         {
@@ -172,8 +212,8 @@ def test_parse_tpex_margin_chg():
 def _mock_get(url, **kwargs):
     resp = MagicMock()
     resp.raise_for_status = MagicMock()
-    if "STOCK_DAY_ALL" in url:
-        resp.json.return_value = TWSE_QUOTE_OK
+    if "MI_INDEX" in url:
+        resp.json.return_value = TWSE_MI_INDEX_OK
     elif "T86" in url:
         resp.json.return_value = TWSE_CHIPS_OK
     elif "MI_MARGN" in url:

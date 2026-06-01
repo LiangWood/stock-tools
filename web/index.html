@@ -326,14 +326,16 @@ html, body {
 #filter-box::placeholder { color: var(--text2); }
 #filter-box:focus { border-color: var(--accent); }
 
-#strategy-tabs {
+#us-strategy-tabs,
+#tw-strategy-tabs {
   display: flex;
   gap: 6px;
   align-items: center;
   flex-shrink: 0;
 }
 
-.strategy-btn {
+.strategy-btn,
+.tw-strategy-btn {
   padding: 5px 14px;
   min-width: 72px;
   border-radius: 18px;
@@ -348,12 +350,14 @@ html, body {
   white-space: nowrap;
 }
 
-.strategy-btn:hover {
+.strategy-btn:hover,
+.tw-strategy-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.strategy-btn.active {
+.strategy-btn.active,
+.tw-strategy-btn.active {
   background: var(--accent-lo);
   border-color: var(--accent);
   color: var(--accent);
@@ -389,6 +393,7 @@ html, body {
 
 #scores-table {
   width: 100%;
+  min-width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -791,6 +796,11 @@ tr.expanded .expand-btn { transform: rotate(90deg); opacity: 1; }
 }
 
 /* 訊號欄位 badges */
+td.signal-cell {
+  overflow: visible;
+  text-overflow: clip;
+}
+
 .sig-badge {
   display: inline-block;
   padding: 2px 6px;
@@ -1126,16 +1136,22 @@ tr.expanded .expand-btn { transform: rotate(90deg); opacity: 1; }
       </div>
       <div id="table-toolbar">
         <div id="count-badge"><b id="count-num">—</b> 檔</div>
-        <!-- 個股/板塊視角切換（僅美股顯示） -->
+        <!-- 美股分頁一：個股視角 / 板塊視角 / 突破觀察 -->
         <div id="view-toggle" style="display:none">
           <button class="view-btn active" data-view="stock">個股視角</button>
           <button class="view-btn" data-view="sector">板塊視角</button>
           <button class="view-btn" data-view="breakout">突破觀察</button>
         </div>
-        <div id="strategy-tabs" style="display:none">
+        <!-- 美股分頁二：RS排名 / 技術面加乘 / 基本面加乘 -->
+        <div id="us-strategy-tabs" style="display:none">
           <button class="strategy-btn active" data-strategy="rs">RS排名</button>
-          <button class="strategy-btn" data-strategy="technical">技術面加成</button>
-          <button class="strategy-btn" data-strategy="fundamental">基本面加成</button>
+          <button class="strategy-btn" data-strategy="technical">技術面加乘</button>
+          <button class="strategy-btn" data-strategy="fundamental">基本面加乘</button>
+        </div>
+        <!-- 台股分頁：RS Score | 籌碼加乘 -->
+        <div id="tw-strategy-tabs" style="display:none">
+          <button class="tw-strategy-btn active" data-strategy="rs">RS排名</button>
+          <button class="tw-strategy-btn" data-strategy="chips">籌碼加乘</button>
         </div>
         <input id="filter-box" type="text" placeholder="搜尋代碼 / 名稱…" autocomplete="off" spellcheck="false">
         <div id="updated-label">—</div>
@@ -1164,6 +1180,19 @@ tr.expanded .expand-btn { transform: rotate(90deg); opacity: 1; }
             <tbody id="breakout-body"></tbody>
           </table>
           <div id="breakout-empty" style="display:none; padding:60px; text-align:center; color:var(--text2); font-size:12px">目前無符合條件的突破標的</div>
+        </div>
+        <!-- 台股突破觀察 -->
+        <div id="tw-breakout-view" style="display:none">
+          <div style="padding:10px 16px 6px; font-size:12px; color:var(--text1); border-bottom:1px solid var(--border); background:var(--bg1)">
+            篩選：<span style="color:var(--up)">slope_20d &gt; 0</span>（近期翻多）＋
+            <span style="color:var(--gold)">slope_60d &lt; 0</span>（前期弱）＋
+            <span style="color:var(--accent)">breakout &gt; 50</span>（量價突破）
+          </div>
+          <table id="tw-breakout-table" style="width:100%;border-collapse:collapse;table-layout:fixed;">
+            <thead id="tw-breakout-head"></thead>
+            <tbody id="tw-breakout-body"></tbody>
+          </table>
+          <div id="tw-breakout-empty" style="display:none; padding:60px; text-align:center; color:var(--text2); font-size:12px">目前無符合條件的台股突破標的</div>
         </div>
         <div id="empty-msg" class="show">點擊「刷新」載入資料</div>
       </div>
@@ -1259,7 +1288,22 @@ const US_COLS = [
 
 const US_RS_COLS = [
   { key:'sector_rank',    label:'S.RANK',      w:'64px',  align:'center', cls:'rank-cell',    fmt:v=>v||'—', sticky:true },
-  ...US_COLS.filter(c => c.key !== 'rank' && c.key !== 'sector_rank' && c.key !== 'adjusted_score'),
+  ...US_COLS.filter(c => c.key !== 'rank' && c.key !== 'sector_rank' && c.key !== 'adjusted_score' && c.key !== 'rs_rating'),
+  { ...US_COLS.find(c => c.key === 'rs_rating'), label:'RS排名', cls:'score', sticky_right:true },
+];
+
+// 台股 RS Score 欄位定義（Minervini 四季度排名）
+const TW_RS_COLS = [
+  { key:'rank',       label:'S.RANK',   w:'60px',  align:'center', cls:'rank-cell',  fmt:v=>v??'—', sticky:true },
+  { key:'ticker',     label:'標的',     w:'140px', align:'left',   cls:'ticker-cell',fmt:v=>v||'—', sticky:true, tw_merge_name:true },
+  { key:'price',      label:'PRICE',    w:'82px',  align:'right',  fmt:v=>v!=null?parseFloat(v.toFixed(2)).toString():'—' },
+  { key:'day_return', label:'當日%',    w:'68px',  align:'right',  cls:'pct',        fmt:pct },
+  { key:'q1_pct',     label:'Q1(3M)',   w:'76px',  align:'right',  cls:'pct',        fmt:pct },
+  { key:'q2_pct',     label:'Q2(3-6M)', w:'82px',  align:'right',  cls:'pct',        fmt:pct },
+  { key:'q3_pct',     label:'Q3(6-9M)', w:'82px',  align:'right',  cls:'pct',        fmt:pct },
+  { key:'q4_pct',     label:'Q4(9-12M)',w:'88px',  align:'right',  cls:'pct',        fmt:pct },
+  { key:'rs_score',   label:'RS SCORE', w:'86px',  align:'right',  cls:'rs-rating',  fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
+  // SCORE 欄位移除（RS Score 已是主排序依據）
 ];
 
 const TW_COLS = [
@@ -1277,7 +1321,7 @@ const TW_COLS = [
   { key:'inst_net',       label:'法人(張)',  w:'82px',  align:'right',  fmt:v=>v!=null?Math.round(v/1000).toLocaleString():'—' },
   { key:'margin_chg', label:'融資增減',  w:'80px',  align:'right',  cls:'margin',      fmt:v=>v!=null?(v>0?`+${v.toLocaleString()}`:v.toLocaleString()):'—' },
   { key:'rsi',        label:'RSI',       w:'60px',  align:'right',  cls:'rsi',         fmt:v=>v!=null?v.toFixed(1):'—' },
-  { key:'_signal',    label:'訊號',      w:'92px',  align:'center', cls:'signal-cell' },
+  { key:'_signal',    label:'訊號',      w:'118px', minW:118, align:'center', cls:'signal-cell' },
   { key:'tw_score',   label:'SCORE',     w:'90px',  align:'right',  cls:'score',       fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
 ];
 
@@ -1301,6 +1345,7 @@ const S = {
   historyPeriod:   'max',
   strategyMode:    'rs',
   strategyLayers:  { technical: false, fundamental: false },
+  twStrategy:      'rs',   // 台股：'rs'=RS Score | 'chips'=籌碼加乘 | 'tw-breakout'=突破觀察
   ema:             { 20: false, 50: false, 120: false, 200: false },
 };
 
@@ -1316,11 +1361,13 @@ let emaSeries    = {};
 //  HELPERS
 // ══════════════════════════════════════════════════════════════
 function cols() {
-  if (S.universe === 'tw') return TW_COLS;
+  if (S.universe === 'tw') {
+    return S.twStrategy === 'chips' ? TW_COLS : TW_RS_COLS;
+  }
   return S.strategyMode === 'rs' ? US_RS_COLS : US_COLS;
 }
 function scoreKey() {
-  if (S.universe === 'tw') return 'tw_score';
+  if (S.universe === 'tw') return S.twStrategy === 'chips' ? 'tw_score' : 'rs_score';
   if (S.strategyLayers.fundamental) return 'adjusted_score';
   if (S.strategyLayers.technical) return 'momentum_score';
   return 'rs_rating';
@@ -1369,26 +1416,35 @@ function renderHead() {
   const thead = document.getElementById('t-head');
   const uKey  = S.universe;
   const tr    = document.createElement('tr');
+  const tableCols = cols();
+  const colWidth = (col, idx) => {
+    const defaultW = parseInt(col.w) || 0;
+    const minW = col.minW || defaultW || 36;
+    const saved = _colW[uKey]?.[idx];
+    return Math.max(minW, saved || defaultW);
+  };
+  const tableMinWidth = tableCols.reduce((sum, col, idx) => sum + colWidth(col, idx), 0);
+  const table = document.getElementById('scores-table');
+  if (table) table.style.minWidth = `${tableMinWidth}px`;
 
   // Pre-compute sticky left offsets synchronously from saved/default widths
   _stickyMap = {};
   let stickyAcc = 0;
   let lastStickyIdx = -1;
-  cols().forEach((col, idx) => {
+  tableCols.forEach((col, idx) => {
     if (!col.sticky) return;
     _stickyMap[idx] = stickyAcc;
-    stickyAcc += (_colW[uKey]?.[idx] ?? parseInt(col.w)) || 0;
+    stickyAcc += colWidth(col, idx);
     lastStickyIdx = idx;
   });
 
-  cols().forEach((col, idx) => {
+  tableCols.forEach((col, idx) => {
     const th = document.createElement('th');
     th.dataset.colIdx = idx;
     th.dataset.colKey = col.key;
 
     // Restore saved width or use default
-    const saved = _colW[uKey]?.[idx];
-    th.style.width = saved ? saved + 'px' : col.w;
+    th.style.width = `${colWidth(col, idx)}px`;
 
     // th 永遠置中，不繼承欄位的 align 設定
     if (col.sticky) {
@@ -1437,10 +1493,11 @@ function renderHead() {
       document.body.classList.add('col-resizing');
 
       const onMove = (e) => {
-        const w = Math.max(36, startW + e.clientX - startX);
+        const w = Math.max(col.minW || 36, startW + e.clientX - startX);
         th.style.width = w + 'px';
         if (!_colW[uKey]) _colW[uKey] = {};
         _colW[uKey][idx] = w;
+        table.style.minWidth = `${tableCols.reduce((sum, c, i) => sum + (i === idx ? w : colWidth(c, i)), 0)}px`;
         if (col.sticky) updateStickyLefts();
       };
       const onUp = () => {
@@ -1469,10 +1526,11 @@ function renderHead() {
         max = Math.max(max, inner ? inner.scrollWidth + 20 : td.scrollWidth);
       });
 
-      const w = max + 18;  // content + padding
+      const w = Math.max(col.minW || 36, max + 18);  // content + padding
       th.style.width = w + 'px';
       if (!_colW[uKey]) _colW[uKey] = {};
       _colW[uKey][idx] = w;
+      table.style.minWidth = `${tableCols.reduce((sum, c, i) => sum + (i === idx ? w : colWidth(c, i)), 0)}px`;
 
       // Flash feedback
       th.classList.add('th-flash');
@@ -1970,7 +2028,7 @@ function setStatus(cls, text) {
 function lockUI(lock) {
   document.getElementById('refresh-btn').disabled = lock;
   document.querySelectorAll('.tab').forEach(b => { b.disabled = lock; });
-  document.querySelectorAll('.strategy-btn').forEach(b => { b.disabled = lock; });
+  document.querySelectorAll('.strategy-btn, .tw-strategy-btn').forEach(b => { b.disabled = lock; });
 }
 
 // ── Progress animation (lerp) ──
@@ -2101,16 +2159,34 @@ async function pollState() {
 }
 
 async function loadScores(opts = {}) {
-  const d = opts.data ?? await (async () => {
-    const r = await fetch('/api/scores');
-    return await r.json();
-  })();
-  S.scores = d.scores || [];
   if (opts.resetSort !== false) S.sortKey = null;
+
+  if (S.universe === 'tw' && !opts.data) {
+    // 台股：預設載入 RS Score（/api/tw-rs-scores）
+    S.twStrategy = S.twStrategy || 'rs';
+    try {
+      if (S.twStrategy === 'rs') {
+        const r = await fetch('/api/tw-rs-scores');
+        S.scores = (await r.json()).scores || [];
+      } else {
+        const r = await fetch('/api/scores');
+        S.scores = (await r.json()).scores || [];
+      }
+    } catch(e) { S.scores = []; }
+    document.getElementById('tw-breakout-view').style.display = 'none';
+    document.getElementById('scores-table').style.display = '';
+  } else {
+    const d = opts.data ?? await (async () => {
+      const r = await fetch('/api/scores');
+      return await r.json();
+    })();
+    S.scores = d.scores || [];
+  }
+
   applyFilter();
-  // 顯示/隱藏切換按鈕（僅美股）
+  // 顯示/隱藏切換按鈕
   const toggle = document.getElementById('view-toggle');
-  if (toggle) toggle.style.display = S.universe === 'tw' ? 'none' : 'flex';
+  
   updateStrategyTabs();
   if (_currentView === 'sector' && S.universe !== 'tw') {
     renderSectorView();
@@ -2160,6 +2236,7 @@ async function refreshLivePrices() {
 
 async function bootstrapExistingScores() {
   try {
+    updateStrategyTabs();
     const r = await fetch('/api/state');
     const s = await r.json();
     if (!s.count || s.status === 'fetching') return;
@@ -2183,19 +2260,36 @@ async function bootstrapExistingScores() {
 let _currentView = 'stock'; // 'stock' | 'sector' | 'breakout'
 
 function updateStrategyTabs() {
-  const tabs = document.getElementById('strategy-tabs');
-  if (!tabs) return;
-  const show = S.universe !== 'tw' && _currentView === 'stock';
-  tabs.style.display = show ? 'flex' : 'none';
-  document.querySelectorAll('.strategy-btn').forEach(b => {
-    const mode = b.dataset.strategy;
-    const active =
-      mode === 'rs' ||
-      (mode === 'technical' && S.strategyLayers.technical) ||
-      (mode === 'fundamental' && S.strategyLayers.fundamental);
-    b.classList.toggle('active', active);
-    b.classList.toggle('base', mode === 'rs');
-  });
+  const isTw = S.universe === 'tw';
+  const isStock = _currentView === 'stock';
+
+  // 美股分頁一：個股視角 / 板塊視角 / 突破觀察
+  const viewToggle = document.getElementById('view-toggle');
+  if (viewToggle) viewToggle.style.display = !isTw ? 'flex' : 'none';
+
+  // 美股分頁二：RS排名 / 技術面加乘 / 基本面加乘（只在個股視角顯示）
+  const usStratTabs = document.getElementById('us-strategy-tabs');
+  if (usStratTabs) {
+    usStratTabs.style.display = (!isTw && isStock) ? 'flex' : 'none';
+    // 更新美股策略 tab active 狀態
+    usStratTabs.querySelectorAll('.strategy-btn').forEach(b => {
+      const mode = b.dataset.strategy;
+      const active = mode === 'rs'
+        || (mode === 'technical'   && S.strategyLayers.technical)
+        || (mode === 'fundamental' && S.strategyLayers.fundamental);
+      b.classList.toggle('active', active);
+      b.classList.toggle('base', mode === 'rs');
+    });
+  }
+
+  // 台股分頁：RS Score / 籌碼加乘
+  const twStratTabs = document.getElementById('tw-strategy-tabs');
+  if (twStratTabs) {
+    twStratTabs.style.display = isTw ? 'flex' : 'none';
+    twStratTabs.querySelectorAll('.tw-strategy-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.strategy === S.twStrategy);
+    });
+  }
 }
 
 function setView(view) {
@@ -2425,7 +2519,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     // 切換時回到個股視角，並顯示/隱藏切換按鈕
     setView('stock');
     const toggle = document.getElementById('view-toggle');
-    toggle.style.display = S.universe === 'tw' ? 'none' : 'flex';
+    
     updateStrategyTabs();
     renderHead(); renderBody();
     document.getElementById('chart-symbol').textContent     = '—';
@@ -2451,7 +2545,8 @@ document.querySelectorAll('.view-btn').forEach(btn => {
   btn.addEventListener('click', () => setView(btn.dataset.view));
 });
 
-document.querySelectorAll('.strategy-btn').forEach(btn => {
+// 美股策略 tab 事件（RS排名 / 技術面加乘 / 基本面加乘）
+document.querySelectorAll('#us-strategy-tabs .strategy-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const mode = btn.dataset.strategy;
     if (mode === 'rs') {
@@ -2474,6 +2569,86 @@ document.querySelectorAll('.strategy-btn').forEach(btn => {
     renderBody();
   });
 });
+
+// 台股策略 tab 事件（RS Score / 籌碼加乘）
+document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const mode = btn.dataset.strategy;
+    S.twStrategy = mode;
+    updateStrategyTabs();
+    document.getElementById('scores-table').style.display = '';
+    document.getElementById('tw-breakout-view').style.display = 'none';
+    loadTwStrategy(mode);
+  });
+});
+
+// 台股策略載入函數
+async function loadTwStrategy(mode) {
+  S.sortKey = null;
+  if (mode === 'rs') {
+    try {
+      const r = await fetch('/api/tw-rs-scores');
+      const d = await r.json();
+      S.scores = d.scores || [];
+    } catch(e) { console.warn('tw-rs-scores fetch failed', e); }
+  } else {
+    // 籌碼加乘：用現有的 /api/scores（台股 chips）
+    try {
+      const r = await fetch('/api/scores');
+      const d = await r.json();
+      S.scores = d.scores || [];
+    } catch(e) { console.warn('scores fetch failed', e); }
+  }
+  applyFilter(); renderHead(); renderBody();
+}
+
+// 台股突破觀察渲染
+async function renderTwBreakoutView() {
+  const tbody = document.getElementById('tw-breakout-body');
+  const thead = document.getElementById('tw-breakout-head');
+  const empty = document.getElementById('tw-breakout-empty');
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text2)">載入中…</td></tr>';
+  empty.style.display = 'none';
+
+  let candidates = [];
+  try {
+    const r = await fetch('/api/tw-breakout-candidates');
+    const d = await r.json();
+    candidates = (d.candidates || []).slice(0, 30);
+  } catch(e) { console.warn('tw-breakout fetch failed', e); }
+
+  if (!candidates.length) {
+    empty.style.display = ''; thead.innerHTML = ''; tbody.innerHTML = ''; return;
+  }
+
+  thead.innerHTML = `<tr style="background:var(--bg1)">
+    <th style="width:44px;padding:8px 10px;font-size:11px;color:var(--text1);text-align:center">#</th>
+    <th style="width:120px;padding:8px 10px;font-size:11px;color:var(--text1);text-align:left">標的</th>
+    <th style="width:80px;padding:8px 10px;font-size:11px;color:var(--text1);text-align:right">PRICE</th>
+    <th style="width:70px;padding:8px 10px;font-size:11px;color:var(--text1);text-align:right">當日%</th>
+    <th style="width:82px;padding:8px 10px;font-size:11px;color:var(--text1);text-align:right">BREAKOUT</th>
+    <th style="width:76px;padding:8px 10px;font-size:11px;color:var(--text1);text-align:right">slope_20d</th>
+    <th style="width:76px;padding:8px 10px;font-size:11px;color:var(--text1);text-align:right">slope_60d</th>
+    <th style="width:60px;padding:8px 10px;font-size:11px;color:var(--text1);text-align:right">RSI</th>
+  </tr>`;
+
+  tbody.innerHTML = candidates.map((r, i) => {
+    const dayUp = (r.day_return || 0) >= 0;
+    const bkCol = (r.breakout_score || 0) >= 80 ? 'var(--accent)' : 'var(--gold)';
+    const name = r.name ? `${r.stock_id || r.ticker.split('.')[0]} ${r.name}` : r.ticker;
+    const lim  = r.is_limit_up ? ' 🔴漲停' : '';
+    return `<tr onclick="pickTicker('${r.ticker}')" style="cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04)">
+      <td style="text-align:center;color:var(--text2);padding:8px 10px">${i+1}</td>
+      <td style="text-align:left;color:var(--accent);font-weight:600;padding:8px 10px">${name}${lim}</td>
+      <td style="text-align:right;color:${dayUp?'var(--up)':'var(--down)'};padding:8px 10px">${r.price!=null?r.price.toFixed(2):'—'}</td>
+      <td style="text-align:right;color:${dayUp?'var(--up)':'var(--down)'};padding:8px 10px">${pct(r.day_return)}</td>
+      <td style="text-align:right;color:${bkCol};font-weight:600;padding:8px 10px">${(r.breakout_score||0).toFixed(1)}</td>
+      <td style="text-align:right;color:var(--up);padding:8px 10px">+${(r.slope_20d||0).toFixed(3)}</td>
+      <td style="text-align:right;color:var(--down);padding:8px 10px">${(r.slope_60d||0).toFixed(3)}</td>
+      <td style="text-align:right;padding:8px 10px">${(r.rsi||0).toFixed(1)}</td>
+    </tr>`;
+  }).join('');
+}
 
 // History range buttons (re-fetch on change)
 ['c-6mo','c-1y','c-5y','c-max'].forEach(id => {
@@ -2516,6 +2691,7 @@ document.getElementById('c-week').addEventListener('click', () => {
 //  INIT
 // ══════════════════════════════════════════════════════════════
 initChart();
+updateStrategyTabs();
 renderHead();
 renderBody();
 bootstrapExistingScores();

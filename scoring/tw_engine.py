@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from scoring.engine import calculate_rsi
+from scoring.engine import calculate_rsi, _linear_slope, _breakout_score
 from scoring.screener import apply_hard_filters, compute_scores, generate_reason, load_config
 
 _CONFIG_PATH = Path(__file__).parent / "config.json"
@@ -177,6 +177,150 @@ def _tech_metrics(ohlcv: pd.DataFrame | None) -> dict:
         "rsi_divergence": rsi_div,
         "breakout_score": brk,
     }
+
+
+def compute_tw_rs_scores(ticker_data: dict) -> pd.DataFrame:
+    """
+    台股 RS Score（Minervini 方法）
+    RS Score = Q1×50% + Q2×25% + Q3×15% + Q4×10%
+
+    Q1-Q4 各為 63 個交易日區間的漲幅，在全市場所有股票中百分位排名後加權。
+    需要 1y OHLCV 資料（twse_fetcher 已改為 period='1y'）。
+    """
+    records = []
+    for ticker, d in ticker_data.items():
+        if d is None:
+            continue
+        ohlcv = d.get("ohlcv")
+        if ohlcv is None or ohlcv.empty:
+            continue
+        close = ohlcv["Close"].dropna()
+        n = len(close)
+        if n < 63 or float(close.iloc[-1]) <= 0:
+            continue
+
+        # 四個季度漲幅（各 ~63 個交易日）
+        q1 = float((close.iloc[-1]   - close.iloc[-64])  / close.iloc[-64])  if n >= 64  else None
+        q2 = float((close.iloc[-64]  - close.iloc[-127]) / close.iloc[-127]) if n >= 127 else None
+        q3 = float((close.iloc[-127] - close.iloc[-190]) / close.iloc[-190]) if n >= 190 else None
+        q4 = float((close.iloc[-190] - close.iloc[-253]) / close.iloc[-253]) if n >= 253 else None
+
+        day_return = d.get("day_return")
+        if day_return is None:
+            day_return = float((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2]) if n >= 2 else 0.0
+        ret_20d    = float((close.iloc[-1] - close.iloc[-21]) / close.iloc[-21]) if n >= 21 else 0.0
+
+        records.append({
+            "ticker":      ticker,
+            "stock_id":    ticker.split(".")[0],
+            "name":        d.get("name", ""),
+            "price":       d.get("price", float(close.iloc[-1])),
+            "day_return":  day_return,
+            "ret_20d":     ret_20d,
+            "volume":      d.get("volume", 0),
+            "is_limit_up": d.get("is_limit_up", False),
+            "is_limit_down": d.get("is_limit_down", False),
+            "q1_ret": q1 if q1 is not None else 0.0,
+            "q2_ret": q2 if q2 is not None else 0.0,
+            "q3_ret": q3 if q3 is not None else 0.0,
+            "q4_ret": q4 if q4 is not None else 0.0,
+            "_q1_ok": q1 is not None,
+        })
+
+    if not records:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(records)
+
+    # ETF / 低流動性過濾（只留 stock 類型 + 成交量 > 0）
+    df = df[df["volume"] > 0].copy()
+    if df.empty:
+        return pd.DataFrame()
+
+    # 全市場百分位排名（0-99）
+    df["_q1_rank"] = df["q1_ret"].rank(pct=True) * 99
+    df["_q2_rank"] = df["q2_ret"].rank(pct=True) * 99
+    df["_q3_rank"] = df["q3_ret"].rank(pct=True) * 99
+    df["_q4_rank"] = df["q4_ret"].rank(pct=True) * 99
+
+    # RS Score（Minervini 加權）
+    df["rs_score"] = (
+        df["_q1_rank"] * 0.50 +
+        df["_q2_rank"] * 0.25 +
+        df["_q3_rank"] * 0.15 +
+        df["_q4_rank"] * 0.10
+    ).clip(0, 99).round(1)
+
+    # 保留四季度漲幅供顯示
+    df.rename(columns={"q1_ret": "q1_pct", "q2_ret": "q2_pct",
+                        "q3_ret": "q3_pct", "q4_ret": "q4_pct"}, inplace=True)
+
+    result = (
+        df.drop(columns=[c for c in df.columns if c.startswith("_")])
+        .sort_values("rs_score", ascending=False)
+        .head(100)
+        .reset_index(drop=True)
+    )
+    result["rank"] = range(1, len(result) + 1)
+    return result
+
+
+def compute_tw_breakout_candidates(ticker_data: dict) -> pd.DataFrame:
+    """
+    台股突破觀察：全市場掃描，不受 Top-N 限制。
+    篩選條件：slope_20d > 0（近期翻多）+ slope_60d < 0（前期弱）+ breakout > 50
+    """
+    records = []
+    for ticker, d in ticker_data.items():
+        if d is None:
+            continue
+        ohlcv = d.get("ohlcv")
+        if ohlcv is None or ohlcv.empty:
+            continue
+        close  = ohlcv["Close"].dropna()
+        volume = ohlcv["Volume"].dropna() if "Volume" in ohlcv else close
+        high   = ohlcv["High"].dropna()  if "High"  in ohlcv else close
+        low    = ohlcv["Low"].dropna()   if "Low"   in ohlcv else close
+
+        if len(close) < 60 or float(close.iloc[-1]) <= 0:
+            continue
+        if d.get("volume", 0) <= 0:
+            continue
+
+        s20 = _linear_slope(close, 20)
+        s60 = _linear_slope(close, 60)
+        bk  = _breakout_score(close, high, low, volume)
+
+        if s20 <= 0 or s60 >= 0.05 or bk <= 50:
+            continue
+
+        n = len(close)
+        day_return = d.get("day_return")
+        if day_return is None:
+            day_return = float((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2]) if n >= 2 else 0.0
+        ret_20d    = float((close.iloc[-1] - close.iloc[-21]) / close.iloc[-21]) if n >= 21 else 0.0
+
+        records.append({
+            "ticker":        ticker,
+            "stock_id":      ticker.split(".")[0],
+            "name":          d.get("name", ""),
+            "price":         d.get("price", float(close.iloc[-1])),
+            "day_return":    day_return,
+            "ret_20d":       ret_20d,
+            "slope_20d":     s20,
+            "slope_60d":     s60,
+            "breakout_score": bk,
+            "rsi":           calculate_rsi(close),
+            "is_limit_up":   d.get("is_limit_up", False),
+        })
+
+    if not records:
+        return pd.DataFrame()
+    return (
+        pd.DataFrame(records)
+        .sort_values("breakout_score", ascending=False)
+        .reset_index(drop=True)
+    )
 
 
 def compute_tw_scores(ticker_data: dict) -> pd.DataFrame:

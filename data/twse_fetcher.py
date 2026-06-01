@@ -11,8 +11,10 @@ logger = logging.getLogger(__name__)
 _TIMEOUT = 15
 _HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 
-# ── TWSE openAPI（不需日期，永遠回傳最新交易日資料）────────────────────────
-_TWSE_QUOTE  = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
+# ── TWSE ────────────────────────────────────────────────────────────────
+# STOCK_DAY_ALL occasionally lags after close. MI_INDEX ALLBUT0999 exposes the
+# current daily close table earlier and includes the same quote fields we need.
+_TWSE_QUOTE  = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?response=json&type=ALLBUT0999"
 _TWSE_MARGIN = "https://openapi.twse.com.tw/v1/marginTrading/MI_MARGN"
 _TWSE_LIMIT  = "https://openapi.twse.com.tw/v1/exchangeReport/TWT84U"   # 今日漲跌停價
 _TWSE_T86    = "https://www.twse.com.tw/rwd/zh/fund/T86"  # 三大法人個股（需帶日期）
@@ -132,16 +134,73 @@ def _detect_stock_type(code: str) -> str:
     return "other"
 
 
-# ── TWSE parsers（openAPI list 格式）─────────────────────────────────────
+# ── TWSE parsers ────────────────────────────────────────────────────────
 
-def _parse_twse_quote(data: list) -> dict[str, dict]:
+def _twse_change_amount(sign_html, diff) -> float:
+    amount = abs(_to_float(diff))
+    sign = str(sign_html or "").lower()
+    if "-" in sign or "green" in sign:
+        return -amount
+    if "+" in sign or "red" in sign:
+        return amount
+    return _to_float(diff)
+
+
+def _parse_twse_mi_index_quote(data: dict) -> dict[str, dict]:
+    rows_src = None
+    for table in data.get("tables", []):
+        fields = table.get("fields", [])
+        title = str(table.get("title", ""))
+        if "證券代號" in fields and "收盤價" in fields and "每日收盤行情" in title:
+            rows_src = table.get("data", [])
+            break
+        if "證券代號" in fields and "收盤價" in fields:
+            rows_src = table.get("data", [])
+    if rows_src is None:
+        return {}
+
+    result: dict[str, dict] = {}
+    for row in rows_src:
+        try:
+            code = str(row[0]).strip()
+            name = str(row[1]).strip()
+            vol = _to_int(row[2]) // 1000
+            trade_value = _to_float(row[4])
+            high = _to_float(row[6])
+            low = _to_float(row[7])
+            price = _to_float(row[8])
+            change = _twse_change_amount(row[9], row[10])
+            prev = price - change
+            day_r = (change / prev) if prev != 0 else 0.0
+            if not code or price <= 0:
+                continue
+            result[code] = {
+                "code": code, "name": name, "price": price,
+                "volume": vol, "day_return": day_r, "pe": None,
+                "high": high, "low": low,
+                "turnover_10k": trade_value / 10_000,
+                "stock_type": _detect_stock_type(code),
+            }
+        except Exception:
+            continue
+    return result
+
+
+def _parse_twse_quote(data) -> dict[str, dict]:
     """
+    Supports:
+    - MI_INDEX type=ALLBUT0999 tables format.
+    - Legacy STOCK_DAY_ALL list format.
+
     STOCK_DAY_ALL 格式：
     [{ Code, Name, TradeVolume, TradeValue,
        OpeningPrice, HighestPrice, LowestPrice, ClosingPrice,
        Change, Transaction }, ...]
     Change 欄位已帶正負號（字串，如 "0.43", "-0.38"）
     """
+    if isinstance(data, dict):
+        return _parse_twse_mi_index_quote(data)
+
     result: dict[str, dict] = {}
     for row in data:
         try:
@@ -313,7 +372,8 @@ def _fetch_tw_ohlcv(
     tickers: list[str],
     progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> dict[str, Optional[pd.DataFrame]]:
-    return fetch_all(tickers, progress_callback=progress_callback)
+    # 用 1y 資料支援 RS Score Q1-Q4（各 63 個交易日，共需 ~252 天）
+    return fetch_all(tickers, period="1y", progress_callback=progress_callback)
 
 
 def fetch_tw_all(

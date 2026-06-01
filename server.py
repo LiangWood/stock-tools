@@ -24,7 +24,7 @@ from data.fetcher import fetch_all
 from data.twse_fetcher import fetch_tw_all
 from data.universe import get_combined_tickers, get_nasdaq100_tickers, get_sp500_tickers
 from scoring.engine import apply_contextual_scoring, compute_scores, compute_breakout_candidates
-from scoring.tw_engine import compute_tw_scores
+from scoring.tw_engine import compute_tw_scores, compute_tw_rs_scores, compute_tw_breakout_candidates
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,9 @@ _state: dict = {
     "status": "idle",
     "progress": "",
     "scores": [],
-    "breakout_candidates": [],   # 全 universe 突破觀察清單
+    "breakout_candidates": [],      # US 突破觀察清單
+    "tw_rs_scores": [],             # 台股 RS Score 排名
+    "tw_breakout_candidates": [],   # 台股突破觀察清單
     "ohlcv": {},
     "universe": "sp500",
     "last_updated": None,
@@ -519,18 +521,26 @@ def _fetch_worker(universe: str):
         if universe == "tw":
             raw = fetch_tw_all(progress_callback=progress)
             with _lock:
+                _state["progress"] = "計算 RS Score…"
+            tw_rs_df = compute_tw_rs_scores(raw)
+            with _lock:
                 _state["progress"] = "計算籌碼分數…"
             scores_df = compute_tw_scores(raw)
+            with _lock:
+                _state["progress"] = "掃描突破候選…"
+            tw_bk_df = compute_tw_breakout_candidates(raw)
             with _lock:
                 _state["progress"] = "整理 K 線資料…"
             ohlcv = {t: _ohlcv_to_json(d.get("ohlcv")) for t, d in raw.items() if d}
             with _lock:
-                _state["status"]       = "done"
-                _state["scores"]       = _df_to_records(scores_df)
-                _state["ohlcv"]        = {k: v for k, v in ohlcv.items() if v}
-                _state["universe"]     = universe
-                _state["last_updated"] = datetime.now().strftime("%H:%M:%S")
-                _state["progress"]     = "完成"
+                _state["status"]                = "done"
+                _state["scores"]                = _df_to_records(scores_df)
+                _state["tw_rs_scores"]          = _df_to_records(tw_rs_df)
+                _state["tw_breakout_candidates"] = _df_to_records(tw_bk_df)
+                _state["ohlcv"]                 = {k: v for k, v in ohlcv.items() if v}
+                _state["universe"]              = universe
+                _state["last_updated"]          = datetime.now().strftime("%H:%M:%S")
+                _state["progress"]              = "完成"
         else:
             tickers = _US_UNIVERSES.get(universe, get_sp500_tickers)()
             if "SPY" not in tickers:
@@ -652,6 +662,14 @@ class Handler(BaseHTTPRequestHandler):
             elif route == "/api/breakout-candidates":
                 with _lock:
                     self._json({"candidates": _state.get("breakout_candidates", [])})
+
+            elif route == "/api/tw-rs-scores":
+                with _lock:
+                    self._json({"scores": _state.get("tw_rs_scores", [])})
+
+            elif route == "/api/tw-breakout-candidates":
+                with _lock:
+                    self._json({"candidates": _state.get("tw_breakout_candidates", [])})
 
             elif route == "/api/ohlcv":
                 ticker = params.get("ticker", [""])[0]
