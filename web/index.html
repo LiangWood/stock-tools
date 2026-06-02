@@ -1406,15 +1406,15 @@ let emaSeries    = {};
 function cols() {
   if (S.universe === 'tw') {
     const sel = S.twSelected || new Set(['rs']);
-    // 只選籌碼 → 籌碼欄；其他（只選RS 或 RS+籌碼同時）→ RS欄
-    return (sel.has('chips') && !sel.has('rs')) ? TW_COLS : TW_RS_COLS;
+    // 籌碼加乘只要被選中就優先顯示籌碼欄位
+    return sel.has('chips') ? TW_COLS : TW_RS_COLS;
   }
   return S.strategyMode === 'rs' ? US_RS_COLS : US_COLS;
 }
 function scoreKey() {
   if (S.universe === 'tw') {
     const sel = S.twSelected || new Set(['rs']);
-    return (sel.has('chips') && !sel.has('rs')) ? 'tw_score' : 'rs_score';
+    return sel.has('chips') ? 'tw_score' : 'rs_score';
   }
   if (S.strategyLayers.fundamental) return 'adjusted_score';
   if (S.strategyLayers.technical) return 'momentum_score';
@@ -2682,26 +2682,17 @@ document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(btn => {
 async function loadTwMultiStrategy() {
   S.sortKey = null;
   const sel = S.twSelected || new Set(['rs']);
-  const hasRs    = sel.has('rs');
-  const hasChips = sel.has('chips');
   let scores = [];
   try {
-    if (hasRs && hasChips) {
-      // 兩者都選：各自 fetch 後合併（以 ticker 去重，RS 優先）
-      const [rR, cR] = await Promise.all([
-        fetch(IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores'),
-        fetch(IS_STATIC ? `${STATIC_BASE}/tw_scores.json`    : '/api/tw-scores'),
-      ]);
-      const [rD, cD] = await Promise.all([rR.json(), cR.json()]);
-      const rsMap = Object.fromEntries((rD.scores||[]).map(r => [r.ticker, r]));
-      scores = [...(rD.scores||[])];
-      (cD.scores||[]).forEach(r => { if (!rsMap[r.ticker]) scores.push(r); });
-    } else if (hasChips) {
+    // 籌碼加乘只要被選中就載籌碼資料（優先）；否則 RS
+    if (sel.has('chips')) {
       const r = await fetch(IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-scores');
-      const d = await r.json(); scores = d.scores || [];
+      const d = await r.json();
+      scores = d.scores || [];
     } else {
       const r = await fetch(IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores');
-      const d = await r.json(); scores = d.scores || [];
+      const d = await r.json();
+      scores = d.scores || [];
     }
   } catch(e) { console.warn('tw strategy fetch failed', e); }
   S.scores = scores;
