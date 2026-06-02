@@ -1878,7 +1878,20 @@ function initChart() {
 }
 
 function ohlcvToCandles(data) {
-  if (!data || !Array.isArray(data.dates)) return [];
+  if (!data) return [];
+  // 新格式：{bars: [{time, open, high, low, close, volume}]}
+  if (Array.isArray(data.bars)) {
+    return data.bars.map(b => ({
+      time:  b.time,
+      open:  b.open,
+      high:  b.high,
+      low:   b.low,
+      close: b.close,
+      _vol:  b.volume ?? 0,
+    })).filter(c => c.open && c.close);
+  }
+  // 舊格式（本機 server fallback）：{dates:[], open:[], ...}
+  if (!Array.isArray(data.dates)) return [];
   return data.dates.map((d, i) => ({
     time:  d,
     open:  data.open[i],
@@ -2038,7 +2051,7 @@ async function pickTicker(ticker, period) {
     const url = `/api/history?ticker=${encodeURIComponent(ticker)}&period=${hp}`;
     const r = await fetch(url);
     const data = await r.json();
-    if (!r.ok || !data.dates) {
+    if (!r.ok || (!data.bars && !data.dates)) {
       document.querySelector('.ph-text').textContent = '無 K 線資料';
       return;
     }
