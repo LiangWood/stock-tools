@@ -2,9 +2,12 @@
 /api/history?ticker=AAPL&period=6mo
 唯一真正即時抓取的 endpoint — 單支 ticker yfinance OHLCV。
 """
+import sys, pathlib as _pl
+_d = str(_pl.Path(__file__).resolve().parent)
+if _d not in sys.path: sys.path.insert(0, _d)
+
 from _helper import BaseHandler
 from urllib.parse import urlparse, parse_qs
-import json
 
 
 VALID_PERIODS = {"6mo", "1y", "2y", "5y", "10y", "max"}
@@ -37,12 +40,9 @@ class handler(BaseHandler):
             bars = []
             for ts, row in df.iterrows():
                 t = int(ts.timestamp()) if hasattr(ts, "timestamp") else int(ts.value // 1e9)
-                o = float(row["Open"])
-                h = float(row["High"])
-                lo = float(row["Low"])
-                c = float(row["Close"])
+                o, h, lo, c = float(row["Open"]), float(row["High"]), float(row["Low"]), float(row["Close"])
                 v = float(row.get("Volume", 0))
-                if any(x != x for x in [o, h, lo, c]):   # NaN check
+                if any(x != x for x in [o, h, lo, c]):
                     continue
                 bars.append({"time": t, "open": o, "high": h, "low": lo, "close": c, "volume": v})
 

@@ -1,9 +1,16 @@
 """Vercel Python Serverless — 共用工具"""
-import json, os, pathlib
+import json, os, pathlib, sys
 from http.server import BaseHTTPRequestHandler
 
+# Vercel Lambda 的 /var/task/ 是專案根目錄
+# __file__ = /var/task/api/_helper.py  → parent.parent = /var/task/
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "web" / "data"
+
+# 確保 api/ 目錄在 sys.path，讓 api/*.py 可以 import _helper
+_api_dir = str(pathlib.Path(__file__).resolve().parent)
+if _api_dir not in sys.path:
+    sys.path.insert(0, _api_dir)
 
 
 def read_json(filename: str) -> dict:
@@ -17,11 +24,11 @@ def read_json(filename: str) -> dict:
 class BaseHandler(BaseHTTPRequestHandler):
     """所有 Serverless handler 的基底：自動加 CORS、Content-Type。"""
 
-    def do_OPTIONS(self):
-        self._cors(204)
+    def log_message(self, fmt, *args):  # 靜音預設 stderr log
+        pass
 
-    def _cors(self, status: int = 200):
-        self.send_response(status)
+    def do_OPTIONS(self):
+        self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")

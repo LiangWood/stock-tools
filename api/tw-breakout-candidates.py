@@ -1,3 +1,6 @@
+import sys, pathlib as _pl
+_d = str(_pl.Path(__file__).resolve().parent)
+if _d not in sys.path: sys.path.insert(0, _d)
 from _helper import BaseHandler, read_json
 
 

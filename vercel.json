@@ -1,9 +1,13 @@
 {
   "version": 2,
-  "name": "stock-momentum-screener",
   "outputDirectory": "web",
   "cleanUrls": true,
   "trailingSlash": false,
+  "functions": {
+    "api/*.py": {
+      "includeFiles": "web/data/**"
+    }
+  },
   "headers": [
     {
       "source": "/api/(.*)",
