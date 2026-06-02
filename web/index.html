@@ -2247,11 +2247,12 @@ async function loadScores(opts = {}) {
   if (S.universe === 'tw' && !opts.data) {
     // 台股：依多選狀態載入
     if (!S.twSelected) S.twSelected = new Set(['rs']);
-    await loadTwMultiStrategy();
-    document.getElementById('tw-breakout-view').style.display =
-      S.twSelected.has('tw-breakout') ? '' : 'none';
-    document.getElementById('scores-table').style.display =
-      (S.twSelected.has('rs') || S.twSelected.has('chips')) ? '' : 'none';
+    const _hasBk   = S.twSelected.has('tw-breakout');
+    const _hasData = S.twSelected.has('rs') || S.twSelected.has('chips');
+    document.getElementById('tw-breakout-view').style.display = _hasBk   ? '' : 'none';
+    document.getElementById('scores-table').style.display     = _hasData ? '' : 'none';
+    if (_hasData) await loadTwMultiStrategy();
+    if (_hasBk) renderTwBreakoutView();
   } else {
     const d = opts.data ?? await (async () => {
       const r = await fetch('/api/scores');
@@ -2669,13 +2670,15 @@ document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(btn => {
       b.classList.toggle('active', S.twSelected.has(b.dataset.strategy));
     });
 
-    // 突破觀察區塊
-    const hasBk = S.twSelected.has('tw-breakout');
+    // 突破觀察：顯示獨立 view，隱藏主表
+    const hasBk   = S.twSelected.has('tw-breakout');
+    const hasData = S.twSelected.has('rs') || S.twSelected.has('chips');
     document.getElementById('tw-breakout-view').style.display = hasBk ? '' : 'none';
+    document.getElementById('scores-table').style.display     = hasData ? '' : 'none';
     if (hasBk) renderTwBreakoutView();
 
-    // 主表資料
-    loadTwMultiStrategy();
+    // 主表資料（只要有 RS 或籌碼就載入）
+    if (hasData) loadTwMultiStrategy();
   });
 });
 
