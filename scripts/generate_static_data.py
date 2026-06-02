@@ -56,6 +56,24 @@ try:
     scores_df = compute_scores(raw)
     breakout_df = compute_breakout_candidates(raw)
 
+    # ── 從 fund_cache.json 補充 pe / peg_ratio / sector_zh（不受 TTL 限制）──
+    fund_cache_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "data", "fund_cache.json"
+    )
+    if os.path.exists(fund_cache_path):
+        with open(fund_cache_path, "r", encoding="utf-8") as _fc:
+            _cached = json.load(_fc)
+        _fund = _cached.get("fund", {})
+        logger.info("基本面快取：%d 檔（日期 %s）", len(_fund), _cached.get("date", "?"))
+        if _fund:
+            from server import _apply_fund_dict
+            scores_df = _apply_fund_dict(scores_df, _fund)
+            scores_df = apply_contextual_scoring(scores_df)
+            logger.info("pe/peg/sector_zh 補充完成")
+    else:
+        logger.warning("data/fund_cache.json 不存在，pe/peg/sector_zh 欄位為空")
+
     save("us_scores", {
         "universe": "all",
         "scores": to_records(scores_df),
