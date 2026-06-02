@@ -1,0 +1,63 @@
+name: 更新股票資料並部署 GitHub Pages
+
+on:
+  schedule:
+    # 台灣時間週一至週五 16:30（UTC 08:30）收盤後更新
+    - cron: '30 8 * * 1-5'
+  workflow_dispatch:   # 允許手動觸發
+    inputs:
+      reason:
+        description: '手動觸發原因'
+        required: false
+
+permissions:
+  contents: write       # 允許 commit 回 data/*.json
+  pages: write          # 允許寫入 GitHub Pages
+  id-token: write       # Pages 部署所需
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate static data
+        run: python scripts/generate_static_data.py
+
+      - name: Commit data files
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add web/data/
+          git diff --staged --quiet || git commit -m "chore: update stock data $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/          # 部署 web/ 目錄
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -71,6 +71,8 @@
    RESET & BASE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+/* 全局表格置中：所有 th / td 垂直水平置中 */
+th, td { vertical-align: middle !important; text-align: center !important; }
 
 html, body {
   height: 100%;
@@ -716,7 +718,8 @@ td.breakout-cell {
   padding: 9px 10px;
   border-bottom: 1px solid var(--border);
   border-right: 1px solid var(--border);
-  text-align: right;
+  text-align: center;
+  vertical-align: middle;
   cursor: pointer;
   user-select: none;
 }
@@ -1266,6 +1269,7 @@ const US_COLS = [
   { key:'sector_zh',      label:'板塊',         w:'80px',  align:'center', cls:'sector-cell',  fmt:v=>v||'—', sticky:true },
   { key:'ticker',         label:'TICKER',      w:'78px',  align:'left',   cls:'ticker-cell',  fmt:v=>v||'—', sticky:true },
   { key:'price',          label:'PRICE',       w:'80px',  align:'right',  fmt:v=>v!=null?`${Number.isInteger(v)?v:v.toFixed(2)}`:'—' },
+  { key:'_chg_amt',       label:'漲跌',        w:'68px',  align:'right' },
   { key:'day_return',     label:'當日%',       w:'68px',  align:'right',  cls:'pct',          fmt:pct },
   { key:'ret_10d',        label:'10日%',       w:'68px',  align:'right',  cls:'pct',          fmt:pct },
   { key:'ret_20d',        label:'20日%',       w:'68px',  align:'right',  cls:'pct',          fmt:pct },
@@ -1297,6 +1301,7 @@ const TW_RS_COLS = [
   { key:'rank',       label:'S.RANK',   w:'60px',  align:'center', cls:'rank-cell',  fmt:v=>v??'—', sticky:true },
   { key:'ticker',     label:'標的',     w:'140px', align:'left',   cls:'ticker-cell',fmt:v=>v||'—', sticky:true, tw_merge_name:true },
   { key:'price',      label:'PRICE',    w:'82px',  align:'right',  fmt:v=>v!=null?parseFloat(v.toFixed(2)).toString():'—' },
+  { key:'_chg_amt',   label:'漲跌',     w:'68px',  align:'right' },
   { key:'day_return', label:'當日%',    w:'68px',  align:'right',  cls:'pct',        fmt:pct },
   { key:'q1_pct',     label:'Q1(3M)',   w:'76px',  align:'right',  cls:'pct',        fmt:pct },
   { key:'q2_pct',     label:'Q2(3-6M)', w:'82px',  align:'right',  cls:'pct',        fmt:pct },
@@ -1310,6 +1315,7 @@ const TW_COLS = [
   { key:'rank',       label:'RANK',       w:'52px',  align:'center', cls:'rank-cell',   fmt:v=>v??'—',  sticky:true },
   { key:'ticker',     label:'標的',      w:'140px', align:'left',   cls:'ticker-cell', fmt:v=>v||'—',  sticky:true, tw_merge_name:true },
   { key:'price',      label:'PRICE',     w:'82px',  align:'right',  fmt:v=>v!=null?parseFloat(v.toFixed(2)).toString():'—' },
+  { key:'_chg_amt',   label:'漲跌',      w:'68px',  align:'right' },
   { key:'day_return', label:'日%',       w:'68px',  align:'right',  cls:'pct',         fmt:pct },
   { key:'ret_10d',    label:'10日%',     w:'68px',  align:'right',  cls:'pct',         fmt:pct },
   { key:'ret_20d',    label:'20日%',     w:'68px',  align:'right',  cls:'pct',         fmt:pct },
@@ -1348,6 +1354,25 @@ const S = {
   twStrategy:      'rs',   // 台股：'rs'=RS Score | 'chips'=籌碼加乘 | 'tw-breakout'=突破觀察
   ema:             { 20: false, 50: false, 120: false, 200: false },
 };
+
+// ── 靜態模式（GitHub Pages）vs 本機模式偵測 ────────────────────────────────
+const _IS_LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
+const _DATA_BASE = _IS_LOCAL ? '' : (location.pathname.replace(/\/[^/]*$/, '') + '/data');
+
+// 靜態模式下的 API 映射
+const _STATIC_MAP = {
+  '/api/scores':                  () => `${_DATA_BASE}/us_scores.json`,
+  '/api/tw-rs-scores':            () => `${_DATA_BASE}/tw_rs_scores.json`,
+  '/api/breakout-candidates':     () => `${_DATA_BASE}/us_breakout.json`,
+  '/api/tw-breakout-candidates':  () => `${_DATA_BASE}/tw_breakout.json`,
+};
+
+async function apiFetch(path, opts) {
+  if (!_IS_LOCAL && _STATIC_MAP[path]) {
+    return fetch(_STATIC_MAP[path](), opts);
+  }
+  return fetch(path, opts);
+}
 
 let pollTimer    = null;
 let liveTimer    = null;
@@ -1390,13 +1415,19 @@ function applyFilter() {
     : S.scores;
 }
 
+// 文字欄位對應的數值排序 key
+const _SORT_KEY_MAP = {
+  'rs_trend': 'momentum_shift',  // ↑/→/↓ → 用底層數值排序
+};
+
 function sortedData() {
   let data = strategyFilteredRows([...S.filteredScores]);
   const key = S.sortKey || scoreKey();
   if (key) {
+    const sortBy = _SORT_KEY_MAP[key] || key;
     data.sort((a, b) => {
-      let av = a[key] ?? -Infinity;
-      let bv = b[key] ?? -Infinity;
+      let av = a[sortBy] ?? -Infinity;
+      let bv = b[sortBy] ?? -Infinity;
       if (typeof av === 'string') return S.sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
       return S.sortAsc ? av - bv : bv - av;
     });
@@ -1583,7 +1614,24 @@ function renderBody(opts = {}) {
         : row[col.key];
       const display = col.fmt ? col.fmt(val, i) : '';
 
-      if (col.key === '_signal' && S.universe === 'tw') {
+      if (col.key === '_chg_amt') {
+        // 漲跌金額 = price × day_return / (1 + day_return)
+        const p  = row.price;
+        const dr = row.day_return;
+        if (p != null && dr != null) {
+          const chg = p * dr / (1 + dr);
+          const isUp = chg > 0;
+          const sign = isUp ? '+' : '';
+          td.textContent = `${sign}${chg.toFixed(2)}`;
+          // 台股：紅漲綠跌；美股：綠漲紅跌
+          const upCol   = S.universe === 'tw' ? 'var(--down)' : 'var(--up)';
+          const downCol = S.universe === 'tw' ? 'var(--up)'   : 'var(--down)';
+          td.style.color = isUp ? upCol : (chg < 0 ? downCol : 'var(--text1)');
+          td.style.fontWeight = '500';
+        } else {
+          td.textContent = '—';
+        }
+      } else if (col.key === '_signal' && S.universe === 'tw') {
         // 訊號判斷：量比 ≥ 1.5 為爆量；fi_net > 0 為主力入場
         const highVol  = (row.amount_ratio || 0) >= 1.5;
         const instIn   = (row.fi_net || 0) > 0;
@@ -1628,8 +1676,8 @@ function renderBody(opts = {}) {
       }
 
       // 漲停 / 跌停底色：只套在 price 和 day_return 欄位
-      if (_limitUp   && (col.key === 'price' || col.key === 'day_return')) td.classList.add('limit-up');
-      if (_limitDown && (col.key === 'price' || col.key === 'day_return')) td.classList.add('limit-down');
+      if (_limitUp   && (col.key === 'price' || col.key === 'day_return' || col.key === '_chg_amt')) td.classList.add('limit-up');
+      if (_limitDown && (col.key === 'price' || col.key === 'day_return' || col.key === '_chg_amt')) td.classList.add('limit-down');
 
       // FinTasticRS 新欄位著色
       if (col.key === 'sector_rs' && val != null) {
@@ -2166,18 +2214,20 @@ async function loadScores(opts = {}) {
     S.twStrategy = S.twStrategy || 'rs';
     try {
       if (S.twStrategy === 'rs') {
-        const r = await fetch('/api/tw-rs-scores');
+        const r = await apiFetch('/api/tw-rs-scores');
         S.scores = (await r.json()).scores || [];
       } else {
-        const r = await fetch('/api/scores');
+        const twUrl = _IS_LOCAL ? '/api/scores' : `${_DATA_BASE}/tw_scores.json`;
+        const r = await fetch(twUrl);
         S.scores = (await r.json()).scores || [];
       }
     } catch(e) { S.scores = []; }
     document.getElementById('tw-breakout-view').style.display = 'none';
     document.getElementById('scores-table').style.display = '';
   } else {
+    const usUrl = _IS_LOCAL ? '/api/scores' : `${_DATA_BASE}/us_scores.json`;
     const d = opts.data ?? await (async () => {
-      const r = await fetch('/api/scores');
+      const r = await fetch(usUrl);
       return await r.json();
     })();
     S.scores = d.scores || [];
@@ -2235,8 +2285,33 @@ async function refreshLivePrices() {
 }
 
 async function bootstrapExistingScores() {
+  updateStrategyTabs();
+
+  // ── 靜態模式（GitHub Pages）────────────────────────────────────────────────
+  if (!_IS_LOCAL) {
+    try {
+      const meta = await fetch(`${_DATA_BASE}/meta.json`).then(r => r.json());
+      const lastUpd = meta.last_updated || '—';
+      // 預載美股資料
+      const usData = await fetch(`${_DATA_BASE}/us_scores.json`).then(r => r.json());
+      S.scores = usData.scores || [];
+      S.universe = 'all';
+      document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.u === 'all'));
+      applyFilter(); renderHead(); renderBody();
+      setStatus('done', `資料日期 ${lastUpd}`);
+      document.getElementById('updated-label').textContent = `更新：${lastUpd}`;
+      // 靜態模式禁用刷新（資料由 GitHub Actions 每日更新）
+      const btn = document.getElementById('refresh-btn');
+      if (btn) { btn.textContent = '每日自動更新'; btn.disabled = true; btn.title = '資料由 GitHub Actions 每日更新'; }
+    } catch(e) {
+      console.warn('Static data load failed', e);
+      setStatus('error', '靜態資料載入失敗');
+    }
+    return;
+  }
+
+  // ── 本機模式（有後端伺服器）────────────────────────────────────────────────
   try {
-    updateStrategyTabs();
     const r = await fetch('/api/state');
     const s = await r.json();
     if (!s.count || s.status === 'fetching') return;
@@ -2318,7 +2393,7 @@ async function renderBreakoutView() {
   // 從獨立 API 取全 universe 突破候選（不受 RS 排名限制）
   let candidates = [];
   try {
-    const r = await fetch('/api/breakout-candidates');
+    const r = await apiFetch('/api/breakout-candidates');
     const d = await r.json();
     candidates = (d.candidates || []).slice(0, 20);
   } catch(e) {
@@ -2335,36 +2410,35 @@ async function renderBreakoutView() {
 
   // Header
   thead.innerHTML = `<tr style="background:var(--bg1)">
-    <th style="width:44px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:center">#</th>
-    <th style="width:76px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:left">TICKER</th>
-    <th style="width:76px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:center">板塊</th>
-    <th style="width:80px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">PRICE</th>
-    <th style="width:70px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">當日%</th>
-    <th style="width:82px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">BREAKOUT</th>
-    <th style="width:76px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">slope_20d</th>
-    <th style="width:76px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">slope_60d</th>
-    <th style="width:70px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">RSI</th>
-    <th style="width:76px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">SCORE</th>
+    <th style="width:60px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:center;letter-spacing:0.9px">RANK</th>
+    <th style="width:100px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:left;letter-spacing:0.9px">TICKER</th>
+    <th style="width:130px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right;letter-spacing:0.9px">PRICE</th>
+    <th style="width:110px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right;letter-spacing:0.9px">當日%</th>
+    <th style="width:180px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right;letter-spacing:0.9px">BREAKOUT</th>
+    <th style="width:160px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right;letter-spacing:0.9px">slope_20d</th>
+    <th style="width:160px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right;letter-spacing:0.9px">slope_60d</th>
+    <th style="width:110px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right;letter-spacing:0.9px">RSI</th>
   </tr>`;
 
   // Body
   tbody.innerHTML = candidates.map((r, i) => {
+    const rank   = i + 1;
+    const isTop3 = rank <= 3;
+    const rankCol = isTop3 ? 'var(--gold)' : 'var(--text2)';
     const dayUp  = (r.day_return || 0) >= 0;
     const bkCol  = (r.breakout_score || 0) >= 85 ? 'var(--accent)' : 'var(--gold)';
     const s20Col = 'var(--up)';
     const s60Col = 'var(--down)';
     const priceStr = r.price != null ? (Number.isInteger(r.price) ? r.price : r.price.toFixed(2)) : '—';
-    return `<tr onclick="pickTicker('${r.ticker}')" style="cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04)">
-      <td style="text-align:center;color:var(--text2);padding:8px 10px;font-size:16px">${i+1}</td>
-      <td style="text-align:left;color:var(--accent);font-weight:600;padding:8px 10px;font-size:16px">${r.ticker}</td>
-      <td style="text-align:center;color:var(--text0);padding:8px 10px;font-size:16px">${r.sector_zh||'—'}</td>
-      <td style="text-align:right;color:${dayUp?'var(--up)':'var(--down)'};padding:8px 10px;font-size:16px">${priceStr}</td>
-      <td style="text-align:right;color:${dayUp?'var(--up)':'var(--down)'};padding:8px 10px;font-size:16px">${pct(r.day_return)}</td>
-      <td style="text-align:right;color:${bkCol};font-weight:600;padding:8px 10px;font-size:16px">${(r.breakout_score||0).toFixed(1)}</td>
-      <td style="text-align:right;color:${s20Col};padding:8px 10px;font-size:16px">+${(r.slope_20d||0).toFixed(3)}</td>
-      <td style="text-align:right;color:${s60Col};padding:8px 10px;font-size:16px">${(r.slope_60d||0).toFixed(3)}</td>
-      <td style="text-align:right;color:var(--text0);padding:8px 10px;font-size:16px">${(r.rsi||0).toFixed(1)}</td>
-      <td style="text-align:right;color:var(--text1);padding:8px 10px;font-size:16px">${(r.momentum_score||0).toFixed(1)}</td>
+    return `<tr data-rank="${rank}" onclick="pickTicker('${r.ticker}')" style="cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04)">
+      <td class="rank-cell" style="color:${rankCol};font-weight:${isTop3?'700':'500'};padding:8px 10px;font-size:13px">${rank}</td>
+      <td style="text-align:left;color:var(--accent);font-weight:600;padding:8px 10px;font-size:14px">${r.ticker}</td>
+      <td style="text-align:right;color:${dayUp?'var(--up)':'var(--down)'};padding:8px 10px;font-size:13px">$${priceStr}</td>
+      <td style="text-align:right;color:${dayUp?'var(--up)':'var(--down)'};padding:8px 10px;font-size:13px">${pct(r.day_return)}</td>
+      <td style="text-align:right;color:${bkCol};font-weight:600;padding:8px 10px;font-size:13px">${(r.breakout_score||0).toFixed(1)}</td>
+      <td style="text-align:right;color:${s20Col};padding:8px 10px;font-size:13px">+${(r.slope_20d||0).toFixed(3)}</td>
+      <td style="text-align:right;color:${s60Col};padding:8px 10px;font-size:13px">${(r.slope_60d||0).toFixed(3)}</td>
+      <td style="text-align:right;color:var(--text0);padding:8px 10px;font-size:13px">${(r.rsi||0).toFixed(1)}</td>
     </tr>`;
   }).join('');
 }
@@ -2519,9 +2593,21 @@ document.querySelectorAll('.tab').forEach(btn => {
     // 切換時回到個股視角，並顯示/隱藏切換按鈕
     setView('stock');
     const toggle = document.getElementById('view-toggle');
-    
     updateStrategyTabs();
-    renderHead(); renderBody();
+    // 嘗試從 server 快取自動補回資料（避免切換 tab 後畫面空白）
+    (async () => {
+      try {
+        const st = await fetch('/api/state').then(r => r.json());
+        const newUniverse = btn.dataset.u === 'tw' ? 'tw' : (st.universe || 'all');
+        if (st.status === 'done' && st.count > 0 && st.universe === newUniverse) {
+          await loadScores({ resetSort: true });
+          setStatus('done', `更新 ${st.last_updated}`);
+          document.getElementById('updated-label').textContent = `更新：${st.last_updated}`;
+        } else {
+          renderHead(); renderBody();
+        }
+      } catch(_) { renderHead(); renderBody(); }
+    })();
     document.getElementById('chart-symbol').textContent     = '—';
     document.getElementById('chart-live-price').textContent = '';
     document.getElementById('chart-ohlc').className         = '';
@@ -2570,12 +2656,14 @@ document.querySelectorAll('#us-strategy-tabs .strategy-btn').forEach(btn => {
   });
 });
 
-// 台股策略 tab 事件（RS Score / 籌碼加乘）
+// 台股策略 tab 事件（RS Score / 籌碼加乘）— 互斥單選
 document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const mode = btn.dataset.strategy;
     S.twStrategy = mode;
-    updateStrategyTabs();
+    // 明確互斥：先全部移除，再加給點選的按鈕
+    document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
     document.getElementById('scores-table').style.display = '';
     document.getElementById('tw-breakout-view').style.display = 'none';
     loadTwStrategy(mode);
@@ -2587,7 +2675,7 @@ async function loadTwStrategy(mode) {
   S.sortKey = null;
   if (mode === 'rs') {
     try {
-      const r = await fetch('/api/tw-rs-scores');
+      const r = await apiFetch('/api/tw-rs-scores');
       const d = await r.json();
       S.scores = d.scores || [];
     } catch(e) { console.warn('tw-rs-scores fetch failed', e); }
@@ -2612,7 +2700,7 @@ async function renderTwBreakoutView() {
 
   let candidates = [];
   try {
-    const r = await fetch('/api/tw-breakout-candidates');
+    const r = await apiFetch('/api/tw-breakout-candidates');
     const d = await r.json();
     candidates = (d.candidates || []).slice(0, 30);
   } catch(e) { console.warn('tw-breakout fetch failed', e); }
