@@ -56,27 +56,6 @@ try:
     scores_df = compute_scores(raw)
     breakout_df = compute_breakout_candidates(raw)
 
-    # 補充基本面：從 data/fund_cache.json 載入（不受每日 TTL 限制）
-    try:
-        from server import _apply_fund_dict, _FUNDAMENTAL_COLUMNS, SECTOR_ZH
-        fund_cache_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                       "data", "fund_cache.json")
-        fund_cache = {}
-        if os.path.exists(fund_cache_path):
-            with open(fund_cache_path, "r", encoding="utf-8") as f:
-                cached = json.load(f)
-            fund_cache = cached.get("fund", {})
-            logger.info("基本面快取載入：%d 檔（日期：%s）", len(fund_cache), cached.get("date"))
-
-        if fund_cache:
-            scores_df = _apply_fund_dict(scores_df, fund_cache)
-            scores_df = apply_contextual_scoring(scores_df)
-            logger.info("基本面補充完成：pe/peg/sector_zh 已套用")
-        else:
-            logger.warning("無基本面快取（data/fund_cache.json），pe/peg/sector 欄位為空")
-    except Exception as e:
-        logger.warning("基本面補充失敗（不影響主資料）：%s", e)
-
     save("us_scores", {
         "universe": "all",
         "scores": to_records(scores_df),
