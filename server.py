@@ -32,6 +32,9 @@ PORT = 5177
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 _DATA_DIR = os.path.join(WEB_DIR, "data")
 
+# Vercel serverless 環境偵測（VERCEL=1 由平台自動注入）
+_IS_VERCEL = os.environ.get("VERCEL") == "1"
+
 
 def _read_static(filename: str) -> dict:
     """從 web/data/ 讀取預產 JSON（供 Serverless / 首次載入 fallback）。"""
@@ -663,8 +666,8 @@ class Handler(BaseHTTPRequestHandler):
                     updated  = _state["last_updated"]
                     error    = _state["error"]
                     count    = len(_state["scores"])
-                # Serverless fallback：若無 live data，從預產 JSON 取 meta
-                if status == "idle" and count == 0:
+                # Serverless fallback：Vercel 上無背景 worker，直接用預產 JSON
+                if _IS_VERCEL or (status == "idle" and count == 0):
                     meta = _read_static("meta.json")
                     us   = _read_static("us_scores.json")
                     if meta or us:
@@ -768,6 +771,11 @@ class Handler(BaseHTTPRequestHandler):
 
             elif route == "/api/fetch":
                 universe = params.get("universe", ["sp500"])[0]
+                # Vercel serverless：無法跑背景 worker，直接回 started；
+                # 下一個 /api/state 請求會立即回傳預產 JSON (done)
+                if _IS_VERCEL:
+                    self._json({"status": "started"})
+                    return
                 with _lock:
                     if _state["status"] == "fetching":
                         self._json({"error": "already fetching"}, 409)
