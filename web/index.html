@@ -775,11 +775,7 @@ tr.expanded .expand-btn { transform: rotate(90deg); opacity: 1; }
 #scores-table td.margin-up   { color: var(--down); }  /* margin increase = bearish */
 #scores-table td.margin-down { color: var(--up);   }
 
-/* 漲停 / 跌停 row highlight */
-#scores-table tbody tr.tw-limit-up   { background: rgba(239,68,68,0.07) !important; }
-#scores-table tbody tr.tw-limit-down { background: rgba(34,197,94,0.07) !important; }
-#scores-table tbody tr.tw-limit-up   td.col-sticky { background: rgba(20,5,5,1); }
-#scores-table tbody tr.tw-limit-down td.col-sticky { background: rgba(5,20,5,1); }
+/* 漲停 / 跌停 row highlight — 移除整列底色，只保留 price/漲跌/日% 三欄的 td.limit-up/down */
 
 /* 漲停 / 跌停 badge in day% cell */
 .limit-badge {
