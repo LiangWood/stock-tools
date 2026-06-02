@@ -1300,7 +1300,7 @@ const US_RS_COLS = [
 
 // 台股 RS Score 欄位定義（Minervini 四季度排名）
 const TW_RS_COLS = [
-  { key:'rank',       label:'S.RANK',   w:'60px',  align:'center', cls:'rank-cell',  fmt:v=>v??'—', sticky:true },
+  { key:'rank',       label:'RANK',     w:'60px',  align:'center', cls:'rank-cell',  fmt:v=>v??'—', sticky:true },
   { key:'ticker',     label:'標的',     w:'140px', align:'left',   cls:'ticker-cell',fmt:v=>v||'—', sticky:true, tw_merge_name:true },
   { key:'price',      label:'PRICE',    w:'82px',  align:'right',  fmt:v=>v!=null?parseFloat(v.toFixed(2)).toString():'—' },
   { key:'_change',    label:'漲跌',     w:'68px',  align:'right',  cls:'change-col', fmt:v=>'—' },
@@ -2688,14 +2688,18 @@ async function loadTwMultiStrategy() {
   let scores = [];
   try {
     // 籌碼加乘只要被選中就載籌碼資料（優先）；否則 RS
-    if (sel.has('chips')) {
-      const r = await fetch(IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-scores');
-      const d = await r.json();
-      scores = d.scores || [];
-    } else {
-      const r = await fetch(IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores');
-      const d = await r.json();
-      scores = d.scores || [];
+    const dataUrl = sel.has('chips')
+      ? (IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-scores')
+      : (IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores');
+    const d = await (await fetch(dataUrl)).json();
+    scores = d.scores || [];
+
+    // 突破觀察被選中 → 只保留有突破訊號的股票（交集過濾）
+    if (sel.has('tw-breakout') && scores.length) {
+      const bkUrl = IS_STATIC ? `${STATIC_BASE}/tw_breakout.json` : '/api/tw-breakout-candidates';
+      const bkD = await (await fetch(bkUrl)).json();
+      const bkSet = new Set((bkD.candidates || []).map(c => c.ticker));
+      scores = scores.filter(r => bkSet.has(r.ticker));
     }
   } catch(e) { console.warn('tw strategy fetch failed', e); }
   S.scores = scores;
