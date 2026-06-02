@@ -1148,10 +1148,11 @@ td.signal-cell {
           <button class="strategy-btn" data-strategy="technical">技術面加乘</button>
           <button class="strategy-btn" data-strategy="fundamental">基本面加乘</button>
         </div>
-        <!-- 台股分頁：RS Score | 籌碼加乘 -->
+        <!-- 台股分頁：多選 checkbox 風格 -->
         <div id="tw-strategy-tabs" style="display:none">
           <button class="tw-strategy-btn active" data-strategy="rs">RS排名</button>
           <button class="tw-strategy-btn" data-strategy="chips">籌碼加乘</button>
+          <button class="tw-strategy-btn" data-strategy="tw-breakout">突破觀察</button>
         </div>
         <input id="filter-box" type="text" placeholder="搜尋代碼 / 名稱…" autocomplete="off" spellcheck="false">
         <div id="updated-label">—</div>
@@ -2212,19 +2213,13 @@ async function loadScores(opts = {}) {
   if (opts.resetSort !== false) S.sortKey = null;
 
   if (S.universe === 'tw' && !opts.data) {
-    // 台股：預設載入 RS Score（/api/tw-rs-scores）
-    S.twStrategy = S.twStrategy || 'rs';
-    try {
-      if (S.twStrategy === 'rs') {
-        const r = await fetch('/api/tw-rs-scores');
-        S.scores = (await r.json()).scores || [];
-      } else {
-        const r = await fetch('/api/scores');
-        S.scores = (await r.json()).scores || [];
-      }
-    } catch(e) { S.scores = []; }
-    document.getElementById('tw-breakout-view').style.display = 'none';
-    document.getElementById('scores-table').style.display = '';
+    // 台股：依多選狀態載入
+    if (!S.twSelected) S.twSelected = new Set(['rs']);
+    await loadTwMultiStrategy();
+    document.getElementById('tw-breakout-view').style.display =
+      S.twSelected.has('tw-breakout') ? '' : 'none';
+    document.getElementById('scores-table').style.display =
+      (S.twSelected.has('rs') || S.twSelected.has('chips')) ? '' : 'none';
   } else {
     const d = opts.data ?? await (async () => {
       const r = await fetch('/api/scores');
@@ -2340,7 +2335,7 @@ function updateStrategyTabs() {
   if (twStratTabs) {
     twStratTabs.style.display = isTw ? 'flex' : 'none';
     twStratTabs.querySelectorAll('.tw-strategy-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.strategy === S.twStrategy);
+      b.classList.toggle('active', (S.twSelected||new Set(['rs'])).has(b.dataset.strategy));
     });
   }
 }
@@ -2387,38 +2382,32 @@ async function renderBreakoutView() {
   }
   empty.style.display = 'none';
 
-  // Header
+  // Header（移除板塊、SCORE）
   thead.innerHTML = `<tr style="background:var(--bg1)">
     <th style="width:44px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:center">#</th>
-    <th style="width:76px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:left">TICKER</th>
-    <th style="width:76px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:center">板塊</th>
-    <th style="width:80px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">PRICE</th>
-    <th style="width:70px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">當日%</th>
-    <th style="width:82px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">BREAKOUT</th>
-    <th style="width:76px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">slope_20d</th>
-    <th style="width:76px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">slope_60d</th>
-    <th style="width:70px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">RSI</th>
-    <th style="width:76px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">SCORE</th>
+    <th style="width:88px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:left">TICKER</th>
+    <th style="width:88px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">PRICE</th>
+    <th style="width:72px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">當日%</th>
+    <th style="width:88px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">BREAKOUT</th>
+    <th style="width:80px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">slope_20d</th>
+    <th style="width:80px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">slope_60d</th>
+    <th style="width:72px;padding:8px 10px;font-size:10px;color:var(--text1);text-align:right">RSI</th>
   </tr>`;
 
-  // Body
+  // Body（移除板塊、SCORE）
   tbody.innerHTML = candidates.map((r, i) => {
     const dayUp  = (r.day_return || 0) >= 0;
     const bkCol  = (r.breakout_score || 0) >= 85 ? 'var(--accent)' : 'var(--gold)';
-    const s20Col = 'var(--up)';
-    const s60Col = 'var(--down)';
     const priceStr = r.price != null ? (Number.isInteger(r.price) ? r.price : r.price.toFixed(2)) : '—';
     return `<tr onclick="pickTicker('${r.ticker}')" style="cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04)">
       <td style="text-align:center;color:var(--text2);padding:8px 10px;font-size:16px">${i+1}</td>
       <td style="text-align:left;color:var(--accent);font-weight:600;padding:8px 10px;font-size:16px">${r.ticker}</td>
-      <td style="text-align:center;color:var(--text0);padding:8px 10px;font-size:16px">${r.sector_zh||'—'}</td>
       <td style="text-align:right;color:${dayUp?'var(--up)':'var(--down)'};padding:8px 10px;font-size:16px">${priceStr}</td>
       <td style="text-align:right;color:${dayUp?'var(--up)':'var(--down)'};padding:8px 10px;font-size:16px">${pct(r.day_return)}</td>
       <td style="text-align:right;color:${bkCol};font-weight:600;padding:8px 10px;font-size:16px">${(r.breakout_score||0).toFixed(1)}</td>
-      <td style="text-align:right;color:${s20Col};padding:8px 10px;font-size:16px">+${(r.slope_20d||0).toFixed(3)}</td>
-      <td style="text-align:right;color:${s60Col};padding:8px 10px;font-size:16px">${(r.slope_60d||0).toFixed(3)}</td>
+      <td style="text-align:right;color:var(--up);padding:8px 10px;font-size:16px">+${(r.slope_20d||0).toFixed(3)}</td>
+      <td style="text-align:right;color:var(--down);padding:8px 10px;font-size:16px">${(r.slope_60d||0).toFixed(3)}</td>
       <td style="text-align:right;color:var(--text0);padding:8px 10px;font-size:16px">${(r.rsi||0).toFixed(1)}</td>
-      <td style="text-align:right;color:var(--text1);padding:8px 10px;font-size:16px">${(r.momentum_score||0).toFixed(1)}</td>
     </tr>`;
   }).join('');
 }
@@ -2624,17 +2613,61 @@ document.querySelectorAll('#us-strategy-tabs .strategy-btn').forEach(btn => {
   });
 });
 
-// 台股策略 tab 事件（RS Score / 籌碼加乘）
+// 台股策略 tab 事件（多選 checkbox 風格）
+// S.twSelected = Set of active strategies
+if (!S.twSelected) S.twSelected = new Set(['rs']);
+
 document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const mode = btn.dataset.strategy;
-    S.twStrategy = mode;
-    updateStrategyTabs();
-    document.getElementById('scores-table').style.display = '';
-    document.getElementById('tw-breakout-view').style.display = 'none';
-    loadTwStrategy(mode);
+    if (S.twSelected.has(mode)) {
+      // 取消選取（至少保留一個）
+      if (S.twSelected.size > 1) S.twSelected.delete(mode);
+    } else {
+      S.twSelected.add(mode);
+    }
+    // 同步 active 樣式
+    document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(b => {
+      b.classList.toggle('active', S.twSelected.has(b.dataset.strategy));
+    });
+    // 突破觀察視圖顯示控制
+    const hasBk = S.twSelected.has('tw-breakout');
+    const hasData = S.twSelected.has('rs') || S.twSelected.has('chips');
+    document.getElementById('tw-breakout-view').style.display = hasBk ? '' : 'none';
+    document.getElementById('scores-table').style.display = hasData ? '' : 'none';
+    if (hasData) loadTwMultiStrategy();
+    if (hasBk) renderTwBreakoutView();
   });
 });
+
+async function loadTwMultiStrategy() {
+  S.sortKey = null;
+  const hasRs    = S.twSelected.has('rs');
+  const hasChips = S.twSelected.has('chips');
+  let scores = [];
+  try {
+    if (hasRs && hasChips) {
+      // 兩個都選：合併去重，RS 優先排序
+      const [rR, cR] = await Promise.all([
+        fetch(IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores'),
+        fetch(IS_STATIC ? `${STATIC_BASE}/tw_scores.json`    : '/api/tw-scores'),
+      ]);
+      const [rD, cD] = await Promise.all([rR.json(), cR.json()]);
+      const rsMap = Object.fromEntries((rD.scores||[]).map(r => [r.ticker, r]));
+      const merged = [...(rD.scores||[])];
+      (cD.scores||[]).forEach(r => { if (!rsMap[r.ticker]) merged.push(r); });
+      scores = merged;
+    } else if (hasRs) {
+      const r = await fetch(IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores');
+      const d = await r.json(); scores = d.scores || [];
+    } else if (hasChips) {
+      const r = await fetch(IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-scores');
+      const d = await r.json(); scores = d.scores || [];
+    }
+  } catch(e) { console.warn('tw multi strategy fetch failed', e); }
+  S.scores = scores;
+  applyFilter(); renderHead(); renderBody();
+}
 
 // 台股策略載入函數
 async function loadTwStrategy(mode) {
