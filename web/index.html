@@ -619,9 +619,13 @@ td.name-cell {
 .limit-up   { background: var(--up);   color: #fff; }
 .limit-down { background: var(--down); color: #fff; }
 
-/* TW coloring — 紅漲綠跌 */
-#scores-table td.tw-up   { color: var(--down); }   /* 漲 → 紅 */
-#scores-table td.tw-down { color: var(--up);   }   /* 跌 → 綠 */
+/* TW coloring — 紅漲綠跌（文字） */
+#scores-table td.tw-up   { color: var(--down); }
+#scores-table td.tw-down { color: var(--up);   }
+
+/* TW price/漲跌/當日% 三欄背景底色 */
+#scores-table td.tw-up-bg   { background: rgba(185,28,28,0.22); color: #f87171; }
+#scores-table td.tw-down-bg { background: rgba(21,128,61,0.22);  color: #4ade80; }
 
 /* 漲停 / 跌停 — 僅 price、日% 欄位填底色，字白色 */
 #scores-table td.limit-up   { background: rgba(127,29,29,0.7) !important; color: #ffffff !important; }
@@ -1267,6 +1271,7 @@ const US_COLS = [
   { key:'sector_zh',      label:'板塊',         w:'80px',  align:'center', cls:'sector-cell',  fmt:v=>v||'—', sticky:true },
   { key:'ticker',         label:'TICKER',      w:'78px',  align:'left',   cls:'ticker-cell',  fmt:v=>v||'—', sticky:true },
   { key:'price',          label:'PRICE',       w:'80px',  align:'right',  fmt:v=>v!=null?`${Number.isInteger(v)?v:v.toFixed(2)}`:'—' },
+  { key:'_change',        label:'漲跌',        w:'68px',  align:'right',  cls:'change-col',   fmt:v=>'—' },
   { key:'day_return',     label:'當日%',       w:'68px',  align:'right',  cls:'pct',          fmt:pct },
   { key:'ret_10d',        label:'10日%',       w:'68px',  align:'right',  cls:'pct',          fmt:pct },
   { key:'ret_20d',        label:'20日%',       w:'68px',  align:'right',  cls:'pct',          fmt:pct },
@@ -1298,6 +1303,7 @@ const TW_RS_COLS = [
   { key:'rank',       label:'S.RANK',   w:'60px',  align:'center', cls:'rank-cell',  fmt:v=>v??'—', sticky:true },
   { key:'ticker',     label:'標的',     w:'140px', align:'left',   cls:'ticker-cell',fmt:v=>v||'—', sticky:true, tw_merge_name:true },
   { key:'price',      label:'PRICE',    w:'82px',  align:'right',  fmt:v=>v!=null?parseFloat(v.toFixed(2)).toString():'—' },
+  { key:'_change',    label:'漲跌',     w:'68px',  align:'right',  cls:'change-col', fmt:v=>'—' },
   { key:'day_return', label:'當日%',    w:'68px',  align:'right',  cls:'pct',        fmt:pct },
   { key:'q1_pct',     label:'Q1(3M)',   w:'76px',  align:'right',  cls:'pct',        fmt:pct },
   { key:'q2_pct',     label:'Q2(3-6M)', w:'82px',  align:'right',  cls:'pct',        fmt:pct },
@@ -1311,6 +1317,7 @@ const TW_COLS = [
   { key:'rank',       label:'RANK',       w:'52px',  align:'center', cls:'rank-cell',   fmt:v=>v??'—',  sticky:true },
   { key:'ticker',     label:'標的',      w:'140px', align:'left',   cls:'ticker-cell', fmt:v=>v||'—',  sticky:true, tw_merge_name:true },
   { key:'price',      label:'PRICE',     w:'82px',  align:'right',  fmt:v=>v!=null?parseFloat(v.toFixed(2)).toString():'—' },
+  { key:'_change',    label:'漲跌',      w:'68px',  align:'right',  cls:'change-col',  fmt:v=>'—' },
   { key:'day_return', label:'日%',       w:'68px',  align:'right',  cls:'pct',         fmt:pct },
   { key:'ret_10d',    label:'10日%',     w:'68px',  align:'right',  cls:'pct',         fmt:pct },
   { key:'ret_20d',    label:'20日%',     w:'68px',  align:'right',  cls:'pct',         fmt:pct },
@@ -1612,12 +1619,24 @@ function renderBody(opts = {}) {
     const _limitUp   = S.universe === 'tw' && row.is_limit_up === true;
     const _limitDown = S.universe === 'tw' && row.is_limit_down === true;
 
+    // 計算漲跌絕對值（price * day_return / (1 + day_return)）
+    const _changeVal = (row.price != null && row.day_return != null && row.day_return !== -1)
+      ? row.price * row.day_return / (1 + row.day_return)
+      : null;
+
     theCols.forEach((col, idx) => {
       const td = document.createElement('td');
-      const val = (col.key === 'rank' && S.universe !== 'tw' && S.strategyMode !== 'rs')
-        ? i + 1
-        : row[col.key];
-      const display = col.fmt ? col.fmt(val, i) : '';
+      // _change 是虛擬欄位，從計算值取得
+      const val = col.key === '_change'
+        ? _changeVal
+        : (col.key === 'rank' && S.universe !== 'tw' && S.strategyMode !== 'rs')
+          ? i + 1
+          : row[col.key];
+
+      // _change 格式：負數加 "-" 前綴，顯示絕對值
+      const display = col.key === '_change'
+        ? (val == null ? '—' : (val < 0 ? '-' : '') + Math.abs(val).toFixed(2))
+        : (col.fmt ? col.fmt(val, i) : '');
 
       if (col.key === '_signal' && S.universe === 'tw') {
         // 訊號判斷：量比 ≥ 1.5 為爆量；fi_net > 0 為主力入場
@@ -1646,26 +1665,50 @@ function renderBody(opts = {}) {
 
       if (col.cls) td.classList.add(col.cls);
 
-      // Percentage coloring（TW：紅漲綠跌；US：綠漲紅跌）
+      // ── 顏色策略 ────────────────────────────────────────────────
+      const isTwUni = S.universe === 'tw';
+      const dir = row.day_return != null ? (row.day_return > 0 ? 1 : row.day_return < 0 ? -1 : 0) : 0;
+
       if (col.cls === 'pct' && val != null) {
-        const upCls   = S.universe === 'tw' ? 'tw-up'   : 'up';
-        const downCls = S.universe === 'tw' ? 'tw-down' : 'down';
-        if (val > 0) td.classList.add(upCls);
-        else if (val < 0) td.classList.add(downCls);
-
+        // 台股 當日% 欄：背景底色；其他 pct 欄：文字色
+        if (isTwUni && col.key === 'day_return') {
+          if (dir > 0) td.classList.add('tw-up-bg');
+          else if (dir < 0) td.classList.add('tw-down-bg');
+        } else {
+          const upCls   = isTwUni ? 'tw-up'   : 'up';
+          const downCls = isTwUni ? 'tw-down' : 'down';
+          const v = val;
+          if (v > 0) td.classList.add(upCls);
+          else if (v < 0) td.classList.add(downCls);
+        }
       }
 
-      // Price column: color based on day_return direction
+      // PRICE 欄顏色
       if (col.key === 'price' && row.day_return != null) {
-        const upCls   = S.universe === 'tw' ? 'tw-up'   : 'up';
-        const downCls = S.universe === 'tw' ? 'tw-down' : 'down';
-        if (row.day_return > 0)      td.classList.add(upCls);
-        else if (row.day_return < 0) td.classList.add(downCls);
+        if (isTwUni) {
+          if (dir > 0) td.classList.add('tw-up-bg');
+          else if (dir < 0) td.classList.add('tw-down-bg');
+        } else {
+          if (dir > 0) td.classList.add('up');
+          else if (dir < 0) td.classList.add('down');
+        }
       }
 
-      // 漲停 / 跌停底色：只套在 price 和 day_return 欄位
-      if (_limitUp   && (col.key === 'price' || col.key === 'day_return')) td.classList.add('limit-up');
-      if (_limitDown && (col.key === 'price' || col.key === 'day_return')) td.classList.add('limit-down');
+      // 漲跌欄顏色
+      if (col.key === '_change' && val != null) {
+        if (isTwUni) {
+          if (dir > 0) td.classList.add('tw-up-bg');
+          else if (dir < 0) td.classList.add('tw-down-bg');
+        } else {
+          if (dir > 0) td.classList.add('up');
+          else if (dir < 0) td.classList.add('down');
+        }
+      }
+
+      // 漲停 / 跌停底色：price、漲跌、當日%
+      const _bgKeys = new Set(['price', '_change', 'day_return']);
+      if (_limitUp   && _bgKeys.has(col.key)) td.classList.add('limit-up');
+      if (_limitDown && _bgKeys.has(col.key)) td.classList.add('limit-down');
 
       // FinTasticRS 新欄位著色
       if (col.key === 'sector_rs' && val != null) {
