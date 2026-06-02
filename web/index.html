@@ -1668,44 +1668,28 @@ function renderBody(opts = {}) {
       // ── 顏色策略 ────────────────────────────────────────────────
       const isTwUni = S.universe === 'tw';
       const dir = row.day_return != null ? (row.day_return > 0 ? 1 : row.day_return < 0 ? -1 : 0) : 0;
+      const upCls   = isTwUni ? 'tw-up'   : 'up';
+      const downCls = isTwUni ? 'tw-down' : 'down';
 
+      // pct 欄位文字色
       if (col.cls === 'pct' && val != null) {
-        // 台股 當日% 欄：背景底色；其他 pct 欄：文字色
-        if (isTwUni && col.key === 'day_return') {
-          if (dir > 0) td.classList.add('tw-up-bg');
-          else if (dir < 0) td.classList.add('tw-down-bg');
-        } else {
-          const upCls   = isTwUni ? 'tw-up'   : 'up';
-          const downCls = isTwUni ? 'tw-down' : 'down';
-          const v = val;
-          if (v > 0) td.classList.add(upCls);
-          else if (v < 0) td.classList.add(downCls);
-        }
+        if (val > 0) td.classList.add(upCls);
+        else if (val < 0) td.classList.add(downCls);
       }
 
-      // PRICE 欄顏色
+      // PRICE 欄文字色
       if (col.key === 'price' && row.day_return != null) {
-        if (isTwUni) {
-          if (dir > 0) td.classList.add('tw-up-bg');
-          else if (dir < 0) td.classList.add('tw-down-bg');
-        } else {
-          if (dir > 0) td.classList.add('up');
-          else if (dir < 0) td.classList.add('down');
-        }
+        if (dir > 0) td.classList.add(upCls);
+        else if (dir < 0) td.classList.add(downCls);
       }
 
-      // 漲跌欄顏色
+      // 漲跌欄文字色
       if (col.key === '_change' && val != null) {
-        if (isTwUni) {
-          if (dir > 0) td.classList.add('tw-up-bg');
-          else if (dir < 0) td.classList.add('tw-down-bg');
-        } else {
-          if (dir > 0) td.classList.add('up');
-          else if (dir < 0) td.classList.add('down');
-        }
+        if (dir > 0) td.classList.add(upCls);
+        else if (dir < 0) td.classList.add(downCls);
       }
 
-      // 漲停 / 跌停底色：price、漲跌、當日%
+      // 漲停 / 跌停底色：price、漲跌、當日% 三欄加背景
       const _bgKeys = new Set(['price', '_change', 'day_return']);
       if (_limitUp   && _bgKeys.has(col.key)) td.classList.add('limit-up');
       if (_limitDown && _bgKeys.has(col.key)) td.classList.add('limit-down');
