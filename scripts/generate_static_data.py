@@ -67,10 +67,11 @@ try:
         _fund = _cached.get("fund", {})
         logger.info("基本面快取：%d 檔（日期 %s）", len(_fund), _cached.get("date", "?"))
         if _fund:
-            from server import _apply_fund_dict
+            from server import _apply_fund_dict, _compute_sector_metrics
             scores_df = _apply_fund_dict(scores_df, _fund)
+            scores_df = _compute_sector_metrics(scores_df)   # ← sector_rank 在這裡算
             scores_df = apply_contextual_scoring(scores_df)
-            logger.info("pe/peg/sector_zh 補充完成")
+            logger.info("pe/peg/sector_zh/sector_rank 補充完成")
     else:
         logger.warning("data/fund_cache.json 不存在，pe/peg/sector_zh 欄位為空")
 
