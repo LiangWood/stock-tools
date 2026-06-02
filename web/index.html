@@ -628,8 +628,8 @@ td.name-cell {
 #scores-table td.tw-down-bg { background: rgba(21,128,61,0.22);  color: #4ade80; }
 
 /* 漲停 / 跌停 — 僅 price、日% 欄位填底色，字白色 */
-#scores-table td.limit-up   { background: rgba(127,29,29,0.55) !important; }
-#scores-table td.limit-down { background: rgba(20,83,45,0.55)  !important; }
+#scores-table td.limit-up   { background: rgba(127,29,29,0.7) !important; color: #ffffff !important; }
+#scores-table td.limit-down { background: rgba(20,83,45,0.7)  !important; color: #ffffff !important; }
 
 /* RSI zone */
 #scores-table td.rsi-hot  { color: var(--up);   }
@@ -2759,7 +2759,7 @@ async function renderTwBreakoutView() {
     const isLim  = !!r.is_limit_up;
     // 台股：紅漲綠跌；漲停套背景底色
     const dirColor = dir > 0 ? 'var(--down)' : dir < 0 ? 'var(--up)' : 'var(--text0)';
-    const limBg    = isLim ? 'background:rgba(127,29,29,0.55);' : '';
+    const limBg    = isLim ? 'background:rgba(127,29,29,0.7);color:#ffffff;' : '';
     const bkCol    = (r.breakout_score || 0) >= 80 ? 'var(--accent)' : 'var(--gold)';
     const code   = r.stock_id || r.ticker.split('.')[0];
     const nameEl = r.name
