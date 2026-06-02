@@ -46,12 +46,15 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config pull.rebase true
+          # 只 stage web/data，其他檔案（cache 等）不提交
           git add web/data/
           if git diff --staged --quiet; then
             echo "No data changes, skipping commit"
           else
             git commit -m "chore: update stock data $(date -u '+%Y-%m-%d %H:%M UTC')"
-            git pull --rebase origin master
+            # --autostash 自動暫存工作區剩餘變更，避免 unstaged changes 錯誤
+            git pull --rebase --autostash origin master
             git push origin master
           fi
 
