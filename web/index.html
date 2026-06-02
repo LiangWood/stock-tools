@@ -1353,8 +1353,8 @@ let pollTimer    = null;
 let liveTimer    = null;
 let liveBusy     = false;
 
-// ── 靜態模式偵測（GitHub Pages 無後端）────────────────────────────────────
-const IS_STATIC = !['localhost', '127.0.0.1'].includes(window.location.hostname);
+// ── 靜態模式偵測（僅 GitHub Pages 無後端；Vercel 有 /api/* serverless）────────
+const IS_STATIC = window.location.hostname.includes('github.io');
 // GitHub Pages 上資料目錄：https://user.github.io/repo/data/
 const STATIC_BASE = IS_STATIC
   ? window.location.href.replace(/\/[^/]*$/, '') + '/data'
