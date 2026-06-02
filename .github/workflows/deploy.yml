@@ -37,7 +37,7 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-ci.txt   # CI 版：排除 customtkinter/matplotlib/mcp 等 GUI 相依
 
       - name: Generate static data
         run: python scripts/generate_static_data.py

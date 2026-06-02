@@ -1,0 +1,6 @@
+# CI/CD 環境（GitHub Actions）用：只需後端資料處理，不需要 GUI
+yfinance>=0.2.40
+pandas>=2.0.0
+numpy>=1.26.0
+requests>=2.28.0
+lxml>=4.9.0
