@@ -1,20 +1,10 @@
-# 本地開發用的後端 server，不部署到 Vercel（Vercel 用 api/ 下的 serverless functions）
-server.py
-main.py
-mcp_server.py
+# 排除本地開發工具和快取，不影響 Python 進入點
 動能篩選器.command
-
-# Python dev deps
 __pycache__/
 *.pyc
 .venv/
 venv/
-
-# Local data caches (too large)
-data/fund_cache.json
 data/tickers_cache.json
-
-# IDE
 .vscode/
 .idea/
 .DS_Store

@@ -1,15 +1,28 @@
 {
   "version": 2,
-  "outputDirectory": "web",
-  "cleanUrls": true,
-  "trailingSlash": false,
-  "headers": [
+  "builds": [
     {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET,OPTIONS" }
-      ]
+      "src": "api/[!_]*.py",
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": ["web/data/**", "api/_helper.py"]
+      }
+    },
+    {
+      "src": "web/**",
+      "use": "@vercel/static"
     }
+  ],
+  "routes": [
+    { "src": "/api/state", "dest": "/api/state.py" },
+    { "src": "/api/scores", "dest": "/api/scores.py" },
+    { "src": "/api/tw-rs-scores", "dest": "/api/tw-rs-scores.py" },
+    { "src": "/api/tw-scores", "dest": "/api/tw-scores.py" },
+    { "src": "/api/breakout-candidates", "dest": "/api/breakout-candidates.py" },
+    { "src": "/api/tw-breakout-candidates", "dest": "/api/tw-breakout-candidates.py" },
+    { "src": "/api/fetch", "dest": "/api/fetch.py" },
+    { "src": "/api/live-refresh", "dest": "/api/live-refresh.py" },
+    { "src": "/api/history", "dest": "/api/history.py" },
+    { "src": "/(.*)", "dest": "/web/$1" }
   ]
 }
