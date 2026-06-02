@@ -1352,6 +1352,41 @@ const S = {
 let pollTimer    = null;
 let liveTimer    = null;
 let liveBusy     = false;
+
+// ── 靜態模式偵測（GitHub Pages 無後端）────────────────────────────────────
+const IS_STATIC = !['localhost', '127.0.0.1'].includes(window.location.hostname);
+// GitHub Pages 上資料目錄：https://user.github.io/repo/data/
+const STATIC_BASE = IS_STATIC
+  ? window.location.href.replace(/\/[^/]*$/, '') + '/data'
+  : '';
+
+/** 根據當前 universe 取對應靜態 JSON，並更新 S.scores */
+async function loadStaticScores() {
+  const isTw = S.universe === 'tw';
+  const file  = isTw
+    ? (S.twStrategy === 'rs' ? 'tw_rs_scores.json' : 'tw_scores.json')
+    : 'us_scores.json';
+  const r = await fetch(`${STATIC_BASE}/${file}`);
+  const d = await r.json();
+  S.scores = d.scores || [];
+}
+
+async function bootstrapStaticData() {
+  lockUI(true);
+  showOverlay('載入靜態資料…', 30);
+  try {
+    await loadStaticScores();
+    showOverlay('完成', 100);
+    applyFilter(); renderHead(); renderBody();
+    updateStrategyTabs();
+    setStatus('done', '靜態資料（每日更新）');
+    document.getElementById('updated-label').textContent = '靜態資料（每日更新）';
+  } catch(e) {
+    console.warn('Static data load failed', e);
+    setStatus('error', '資料載入失敗');
+  }
+  hideOverlay(); lockUI(false);
+}
 let lwChart      = null;
 let candleSeries = null;
 let volSeries    = null;
@@ -2083,6 +2118,8 @@ function showToast(msg) {
 
 async function startFetch() {
   stopLiveRefresh();
+  // 靜態模式：直接讀 JSON，不打後端 API
+  if (IS_STATIC) { await bootstrapStaticData(); return; }
   lockUI(true);
   showOverlay('連接中…');
   setStatus('fetching', '啟動中…');
@@ -2206,6 +2243,7 @@ function stopLiveRefresh() {
 function startLiveRefresh() {
   stopLiveRefresh();
   if (S.universe === 'tw') return;
+  if (IS_STATIC) return;   // 靜態模式無後端，停用 live refresh
   liveTimer = setInterval(refreshLivePrices, 15 * 60 * 1000);   // 15 分鐘自動更新
 }
 
@@ -2235,8 +2273,10 @@ async function refreshLivePrices() {
 }
 
 async function bootstrapExistingScores() {
+  updateStrategyTabs();
+  // 靜態模式：自動載入預生成資料
+  if (IS_STATIC) { await bootstrapStaticData(); return; }
   try {
-    updateStrategyTabs();
     const r = await fetch('/api/state');
     const s = await r.json();
     if (!s.count || s.status === 'fetching') return;
@@ -2318,7 +2358,8 @@ async function renderBreakoutView() {
   // 從獨立 API 取全 universe 突破候選（不受 RS 排名限制）
   let candidates = [];
   try {
-    const r = await fetch('/api/breakout-candidates');
+    const url = IS_STATIC ? `${STATIC_BASE}/us_breakout.json` : '/api/breakout-candidates';
+    const r = await fetch(url);
     const d = await r.json();
     candidates = (d.candidates || []).slice(0, 20);
   } catch(e) {
@@ -2585,20 +2626,14 @@ document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(btn => {
 // 台股策略載入函數
 async function loadTwStrategy(mode) {
   S.sortKey = null;
-  if (mode === 'rs') {
-    try {
-      const r = await fetch('/api/tw-rs-scores');
-      const d = await r.json();
-      S.scores = d.scores || [];
-    } catch(e) { console.warn('tw-rs-scores fetch failed', e); }
-  } else {
-    // 籌碼加乘：用現有的 /api/scores（台股 chips）
-    try {
-      const r = await fetch('/api/scores');
-      const d = await r.json();
-      S.scores = d.scores || [];
-    } catch(e) { console.warn('scores fetch failed', e); }
-  }
+  const url = IS_STATIC
+    ? `${STATIC_BASE}/${mode === 'rs' ? 'tw_rs_scores.json' : 'tw_scores.json'}`
+    : (mode === 'rs' ? '/api/tw-rs-scores' : '/api/scores');
+  try {
+    const r = await fetch(url);
+    const d = await r.json();
+    S.scores = d.scores || [];
+  } catch(e) { console.warn('tw strategy fetch failed', e); }
   applyFilter(); renderHead(); renderBody();
 }
 
@@ -2612,7 +2647,8 @@ async function renderTwBreakoutView() {
 
   let candidates = [];
   try {
-    const r = await fetch('/api/tw-breakout-candidates');
+    const url = IS_STATIC ? `${STATIC_BASE}/tw_breakout.json` : '/api/tw-breakout-candidates';
+    const r = await fetch(url);
     const d = await r.json();
     candidates = (d.candidates || []).slice(0, 30);
   } catch(e) { console.warn('tw-breakout fetch failed', e); }
