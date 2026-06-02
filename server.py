@@ -30,6 +30,17 @@ logger = logging.getLogger(__name__)
 
 PORT = 5177
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+_DATA_DIR = os.path.join(WEB_DIR, "data")
+
+
+def _read_static(filename: str) -> dict:
+    """從 web/data/ 讀取預產 JSON（供 Serverless / 首次載入 fallback）。"""
+    import json as _json
+    path = os.path.join(_DATA_DIR, filename)
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return _json.load(f)
+    return {}
 
 _state: dict = {
     "status": "idle",
@@ -646,30 +657,81 @@ class Handler(BaseHTTPRequestHandler):
 
             elif route == "/api/state":
                 with _lock:
-                    self._json({
-                        "status":       _state["status"],
-                        "progress":     _state["progress"],
-                        "universe":     _state["universe"],
-                        "last_updated": _state["last_updated"],
-                        "error":        _state["error"],
-                        "count":        len(_state["scores"]),
-                    })
+                    status   = _state["status"]
+                    progress = _state["progress"]
+                    universe = _state["universe"]
+                    updated  = _state["last_updated"]
+                    error    = _state["error"]
+                    count    = len(_state["scores"])
+                # Serverless fallback：若無 live data，從預產 JSON 取 meta
+                if status == "idle" and count == 0:
+                    meta = _read_static("meta.json")
+                    us   = _read_static("us_scores.json")
+                    if meta or us:
+                        status   = "done"
+                        progress = "靜態資料（每日收盤後更新）"
+                        universe = "all"
+                        updated  = meta.get("last_updated", updated)
+                        count    = us.get("count", len(us.get("scores", [])))
+                self._json({
+                    "status":       status,
+                    "progress":     progress,
+                    "universe":     universe,
+                    "last_updated": updated,
+                    "error":        error,
+                    "count":        count,
+                })
 
             elif route == "/api/scores":
                 with _lock:
-                    self._json({"universe": _state["universe"], "scores": _state["scores"]})
+                    scores  = _state["scores"]
+                    universe = _state["universe"]
+                if not scores:
+                    data = _read_static("us_scores.json")
+                    if data:
+                        self._json(data)
+                        return
+                self._json({"universe": universe, "scores": scores})
 
             elif route == "/api/breakout-candidates":
                 with _lock:
-                    self._json({"candidates": _state.get("breakout_candidates", [])})
+                    candidates = _state.get("breakout_candidates", [])
+                if not candidates:
+                    data = _read_static("us_breakout.json")
+                    if data:
+                        self._json(data)
+                        return
+                self._json({"candidates": candidates})
+
+            elif route == "/api/tw-scores":
+                with _lock:
+                    tw_chips = _state.get("scores", []) if _state.get("universe") == "tw" else []
+                if not tw_chips:
+                    data = _read_static("tw_scores.json")
+                    if data:
+                        self._json(data)
+                        return
+                self._json({"universe": "tw", "scores": tw_chips})
 
             elif route == "/api/tw-rs-scores":
                 with _lock:
-                    self._json({"scores": _state.get("tw_rs_scores", [])})
+                    tw_rs = _state.get("tw_rs_scores", [])
+                if not tw_rs:
+                    data = _read_static("tw_rs_scores.json")
+                    if data:
+                        self._json(data)
+                        return
+                self._json({"scores": tw_rs})
 
             elif route == "/api/tw-breakout-candidates":
                 with _lock:
-                    self._json({"candidates": _state.get("tw_breakout_candidates", [])})
+                    tw_bk = _state.get("tw_breakout_candidates", [])
+                if not tw_bk:
+                    data = _read_static("tw_breakout.json")
+                    if data:
+                        self._json(data)
+                        return
+                self._json({"candidates": tw_bk})
 
             elif route == "/api/ohlcv":
                 ticker = params.get("ticker", [""])[0]

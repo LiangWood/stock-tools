@@ -2628,7 +2628,7 @@ async function loadTwStrategy(mode) {
   S.sortKey = null;
   const url = IS_STATIC
     ? `${STATIC_BASE}/${mode === 'rs' ? 'tw_rs_scores.json' : 'tw_scores.json'}`
-    : (mode === 'rs' ? '/api/tw-rs-scores' : '/api/scores');
+    : (mode === 'rs' ? '/api/tw-rs-scores' : '/api/tw-scores');
   try {
     const r = await fetch(url);
     const d = await r.json();
