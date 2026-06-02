@@ -1405,12 +1405,16 @@ let emaSeries    = {};
 // ══════════════════════════════════════════════════════════════
 function cols() {
   if (S.universe === 'tw') {
-    return S.twStrategy === 'chips' ? TW_COLS : TW_RS_COLS;
+    const sel = S.twSelected || new Set(['rs']);
+    return sel.has('chips') ? TW_COLS : TW_RS_COLS;
   }
   return S.strategyMode === 'rs' ? US_RS_COLS : US_COLS;
 }
 function scoreKey() {
-  if (S.universe === 'tw') return S.twStrategy === 'chips' ? 'tw_score' : 'rs_score';
+  if (S.universe === 'tw') {
+    const sel = S.twSelected || new Set(['rs']);
+    return sel.has('chips') ? 'tw_score' : 'rs_score';
+  }
   if (S.strategyLayers.fundamental) return 'adjusted_score';
   if (S.strategyLayers.technical) return 'momentum_score';
   return 'rs_rating';
@@ -2640,58 +2644,57 @@ document.querySelectorAll('#us-strategy-tabs .strategy-btn').forEach(btn => {
   });
 });
 
-// 台股策略 tab 事件（多選 checkbox 風格）
-// S.twSelected = Set of active strategies
+// 台股策略 tab 事件
+// RS排名 / 籌碼加乘：互斥切換（只能一個）
+// 突破觀察：可疊加（顯示在列表下方）
 if (!S.twSelected) S.twSelected = new Set(['rs']);
 
 document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const mode = btn.dataset.strategy;
-    if (S.twSelected.has(mode)) {
-      // 取消選取（至少保留一個）
-      if (S.twSelected.size > 1) S.twSelected.delete(mode);
+
+    if (mode === 'tw-breakout') {
+      // 突破觀察：toggle 疊加
+      if (S.twSelected.has('tw-breakout')) {
+        S.twSelected.delete('tw-breakout');
+      } else {
+        S.twSelected.add('tw-breakout');
+      }
     } else {
+      // RS排名 / 籌碼加乘：互斥切換
+      S.twSelected.delete('rs');
+      S.twSelected.delete('chips');
       S.twSelected.add(mode);
     }
+
     // 同步 active 樣式
     document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(b => {
       b.classList.toggle('active', S.twSelected.has(b.dataset.strategy));
     });
-    // 突破觀察視圖顯示控制
+
+    // 突破觀察區塊顯示控制
     const hasBk = S.twSelected.has('tw-breakout');
-    const hasData = S.twSelected.has('rs') || S.twSelected.has('chips');
     document.getElementById('tw-breakout-view').style.display = hasBk ? '' : 'none';
-    document.getElementById('scores-table').style.display = hasData ? '' : 'none';
-    if (hasData) loadTwMultiStrategy();
     if (hasBk) renderTwBreakoutView();
+
+    // 載入主表資料（RS 或籌碼）
+    if (mode !== 'tw-breakout') loadTwMultiStrategy();
   });
 });
 
 async function loadTwMultiStrategy() {
   S.sortKey = null;
-  const hasRs    = S.twSelected.has('rs');
-  const hasChips = S.twSelected.has('chips');
+  const sel = S.twSelected || new Set(['rs']);
   let scores = [];
   try {
-    if (hasRs && hasChips) {
-      // 兩個都選：合併去重，RS 優先排序
-      const [rR, cR] = await Promise.all([
-        fetch(IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores'),
-        fetch(IS_STATIC ? `${STATIC_BASE}/tw_scores.json`    : '/api/tw-scores'),
-      ]);
-      const [rD, cD] = await Promise.all([rR.json(), cR.json()]);
-      const rsMap = Object.fromEntries((rD.scores||[]).map(r => [r.ticker, r]));
-      const merged = [...(rD.scores||[])];
-      (cD.scores||[]).forEach(r => { if (!rsMap[r.ticker]) merged.push(r); });
-      scores = merged;
-    } else if (hasRs) {
-      const r = await fetch(IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores');
-      const d = await r.json(); scores = d.scores || [];
-    } else if (hasChips) {
+    if (sel.has('chips')) {
       const r = await fetch(IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-scores');
       const d = await r.json(); scores = d.scores || [];
+    } else {
+      const r = await fetch(IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores');
+      const d = await r.json(); scores = d.scores || [];
     }
-  } catch(e) { console.warn('tw multi strategy fetch failed', e); }
+  } catch(e) { console.warn('tw strategy fetch failed', e); }
   S.scores = scores;
   applyFilter(); renderHead(); renderBody();
 }
