@@ -24,7 +24,10 @@ from data.fetcher import fetch_all
 from data.twse_fetcher import fetch_tw_all
 from data.universe import get_combined_tickers, get_nasdaq100_tickers, get_sp500_tickers
 from scoring.engine import apply_contextual_scoring, compute_scores, compute_breakout_candidates
-from scoring.tw_engine import compute_tw_scores, compute_tw_rs_scores, compute_tw_breakout_candidates
+from scoring.tw_engine import (
+    compute_tw_scores, compute_tw_rs_scores,
+    compute_tw_breakout_candidates, compute_tw_early_stage_candidates,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +55,7 @@ _state: dict = {
     "breakout_candidates": [],      # US 突破觀察清單
     "tw_rs_scores": [],             # 台股 RS Score 排名
     "tw_breakout_candidates": [],   # 台股突破觀察清單
+    "tw_early_stage": [],           # 台股起漲觀察清單
     "ohlcv": {},
     "universe": "sp500",
     "last_updated": None,
@@ -544,6 +548,9 @@ def _fetch_worker(universe: str):
                 _state["progress"] = "掃描突破候選…"
             tw_bk_df = compute_tw_breakout_candidates(raw)
             with _lock:
+                _state["progress"] = "掃描起漲候選…"
+            tw_early_df = compute_tw_early_stage_candidates(raw)
+            with _lock:
                 _state["progress"] = "整理 K 線資料…"
             ohlcv = {t: _ohlcv_to_json(d.get("ohlcv")) for t, d in raw.items() if d}
             with _lock:
@@ -551,6 +558,7 @@ def _fetch_worker(universe: str):
                 _state["scores"]                = _df_to_records(scores_df)
                 _state["tw_rs_scores"]          = _df_to_records(tw_rs_df)
                 _state["tw_breakout_candidates"] = _df_to_records(tw_bk_df)
+                _state["tw_early_stage"]        = _df_to_records(tw_early_df)
                 _state["ohlcv"]                 = {k: v for k, v in ohlcv.items() if v}
                 _state["universe"]              = universe
                 _state["last_updated"]          = datetime.now().strftime("%H:%M:%S")
@@ -735,6 +743,16 @@ class Handler(BaseHTTPRequestHandler):
                         self._json(data)
                         return
                 self._json({"candidates": tw_bk})
+
+            elif route == "/api/tw-early-stage":
+                with _lock:
+                    tw_early = _state.get("tw_early_stage", [])
+                if not tw_early:
+                    data = _read_static("tw_early_stage.json")
+                    if data:
+                        self._json(data)
+                        return
+                self._json({"candidates": tw_early})
 
             elif route == "/api/ohlcv":
                 ticker = params.get("ticker", [""])[0]

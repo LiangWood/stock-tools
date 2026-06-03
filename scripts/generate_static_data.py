@@ -96,7 +96,8 @@ logger.info("=== 台股資料抓取開始 ===")
 try:
     from data.twse_fetcher import fetch_tw_all
     from scoring.tw_engine import (
-        compute_tw_scores, compute_tw_rs_scores, compute_tw_breakout_candidates
+        compute_tw_scores, compute_tw_rs_scores,
+        compute_tw_breakout_candidates, compute_tw_early_stage_candidates,
     )
 
     logger.info("Fetching TW stocks…")
@@ -110,6 +111,9 @@ try:
 
     logger.info("Computing TW breakout candidates…")
     tw_bk_df = compute_tw_breakout_candidates(tw_raw)
+
+    logger.info("Computing TW early-stage candidates…")
+    tw_early_df = compute_tw_early_stage_candidates(tw_raw)
 
     save("tw_scores", {
         "universe": "tw",
@@ -125,13 +129,18 @@ try:
         "candidates": to_records(tw_bk_df),
         "last_updated": now,
     })
-    logger.info("台股完成：籌碼 %d 檔，RS %d 檔，突破 %d 檔",
-                len(tw_chips_df), len(tw_rs_df), len(tw_bk_df))
+    save("tw_early_stage", {
+        "candidates": to_records(tw_early_df),
+        "last_updated": now,
+    })
+    logger.info("台股完成：籌碼 %d 檔，RS %d 檔，突破 %d 檔，起漲 %d 檔",
+                len(tw_chips_df), len(tw_rs_df), len(tw_bk_df), len(tw_early_df))
 except Exception as e:
     logger.error("台股資料抓取失敗：%s", e)
-    save("tw_scores",    {"universe": "tw", "scores": [], "last_updated": now, "count": 0})
-    save("tw_rs_scores", {"scores": [], "last_updated": now})
-    save("tw_breakout",  {"candidates": [], "last_updated": now})
+    save("tw_scores",      {"universe": "tw", "scores": [], "last_updated": now, "count": 0})
+    save("tw_rs_scores",   {"scores": [], "last_updated": now})
+    save("tw_breakout",    {"candidates": [], "last_updated": now})
+    save("tw_early_stage", {"candidates": [], "last_updated": now})
 
 # ── meta ──────────────────────────────────────────────────────────────────────
 save("meta", {"last_updated": now, "generated_at": datetime.utcnow().isoformat() + "Z"})
