@@ -757,29 +757,48 @@ class Handler(BaseHTTPRequestHandler):
                     data = _state["ohlcv"].get(ticker)
                 self._json(data if data else {"error": "not found"}, 200 if data else 404)
 
+            elif route == "/api/indices":
+                universe = params.get("universe", ["us"])[0]
+                try:
+                    import yfinance as yf
+                    if universe == "tw":
+                        symbols = {"加權指數": "^TWII"}
+                    else:
+                        symbols = {"DOW": "^DJI", "NAQ100": "^NDX", "SP500": "^GSPC"}
+                    result = []
+                    for name, symbol in symbols.items():
+                        df = yf.Ticker(symbol).history(period="2d", auto_adjust=True, raise_errors=False)
+                        if df is not None and not df.empty:
+                            last = float(df["Close"].iloc[-1])
+                            prev = float(df["Close"].iloc[-2]) if len(df) >= 2 else last
+                            chg     = last - prev
+                            chg_pct = chg / prev * 100 if prev else 0.0
+                            result.append({"name": name, "price": last,
+                                           "change": chg, "change_pct": chg_pct})
+                    self._json({"indices": result})
+                except Exception as exc:
+                    logger.warning("indices fetch failed: %s", exc)
+                    self._json({"indices": []})
+
             elif route == "/api/history":
-                ticker = params.get("ticker", [""])[0].upper().strip()
+                ticker = params.get("ticker", [""])[0].strip()
                 period = params.get("period", ["6mo"])[0]
                 if period not in ("6mo", "1y", "2y", "5y", "10y", "max"):
                     period = "6mo"
                 try:
                     import yfinance as yf
-                    import pandas as _pd
-                    df = yf.download(ticker, period=period, progress=False, auto_adjust=True)
-                    if isinstance(df.columns, _pd.MultiIndex):
-                        df = df.xs(ticker, axis=1, level=1)
+                    # 用 Ticker.history() 避免多線程下的 AttributeError bug
+                    df = yf.Ticker(ticker).history(
+                        period=period, auto_adjust=True, raise_errors=False
+                    )
                     if df is None or df.empty:
                         self._json({"error": "no data"}, 404)
                         return
-                    bars = []
-                    for ts, row in df.iterrows():
-                        t = int(ts.timestamp()) if hasattr(ts, "timestamp") else int(ts.value // 1_000_000_000)
-                        o, h, lo, c = float(row["Open"]), float(row["High"]), float(row["Low"]), float(row["Close"])
-                        v = float(row.get("Volume", 0))
-                        if any(x != x for x in [o, h, lo, c]):  # NaN check
-                            continue
-                        bars.append({"time": t, "open": o, "high": h, "low": lo, "close": c, "volume": v})
-                    self._json({"ticker": ticker, "period": period, "bars": bars})
+                    data = _ohlcv_to_json(df)
+                    if data:
+                        self._json(data)
+                    else:
+                        self._json({"error": "no data"}, 404)
                 except Exception as exc:
                     logger.warning("history fetch failed %s: %s", ticker, exc)
                     self._json({"error": str(exc)}, 500)

@@ -307,9 +307,16 @@ def _metrics_for(
     # ── FinTasticRS 新指標 ───────────────────────────────────────────────────
     slope_20d  = _linear_slope(close, 20)
     slope_60d  = _linear_slope(close, 60)
-    slope_120d = _linear_slope(close, min(120, n)) if n >= 60 else 0.0
+    slope_120d = _linear_slope(close, min(120, n)) if n >= 60  else 0.0
+    slope_9m   = _linear_slope(close, min(189, n)) if n >= 120 else 0.0   # ← 9M 長線
 
     ud_60d = _ud_ratio(close, 60)
+
+    # RTF 超額報酬各區間（等等在 compute_scores 扣掉 SPY 基準）
+    ret_63d  = float((close.iloc[-1] - close.iloc[-64])  / close.iloc[-64])  if n >= 64  else 0.0
+    ret_126d = float((close.iloc[-1] - close.iloc[-127]) / close.iloc[-127]) if n >= 127 else 0.0
+    ret_189d = float((close.iloc[-1] - close.iloc[-190]) / close.iloc[-190]) if n >= 190 else 0.0
+    ret_252d = float((close.iloc[-1] - close.iloc[-253]) / close.iloc[-253]) if n >= 253 else 0.0
 
     ema20_val = float(_ema(close, 20).iloc[-1])
     ema50_val = float(_ema(close, 50).iloc[-1])
@@ -334,9 +341,14 @@ def _metrics_for(
         "slope_20d":    slope_20d,
         "slope_60d":    slope_60d,
         "slope_120d":   slope_120d,
+        "slope_9m":     slope_9m,
         "ud_ratio_60d": ud_60d,
         "p_20ma":       p_20ma,
         "p_60ma":       p_60ma,
+        "ret_63d":      ret_63d,
+        "ret_126d":     ret_126d,
+        "ret_189d":     ret_189d,
+        "ret_252d":     ret_252d,
         "pass_technical": pass_technical,
         # 內部評分（前綴 _ 在輸出時會被移除）
         "_macd_score": _macd_score(close),
@@ -360,19 +372,25 @@ def compute_scores(ticker_data: dict) -> pd.DataFrame:
     if not ticker_data:
         return _empty
 
-    # SPY 基準
+    # SPY 基準（短期 RS + IBD 四季超額報酬計算用）
     spy_ret_21d = spy_ret_5d = 0.0
+    spy_ret_63d = spy_ret_126d = spy_ret_189d = spy_ret_252d = 0.0
     spy_df = ticker_data.get("SPY")
     if spy_df is not None and not spy_df.empty:
         spy_close = spy_df["Close"].dropna()
-        if len(spy_close) >= 22:
-            spy_ret_21d = float(
-                (spy_close.iloc[-1] - spy_close.iloc[-22]) / spy_close.iloc[-22]
-            )
-        if len(spy_close) >= 6:
-            spy_ret_5d = float(
-                (spy_close.iloc[-1] - spy_close.iloc[-6]) / spy_close.iloc[-6]
-            )
+        n_spy = len(spy_close)
+        if n_spy >= 22:
+            spy_ret_21d  = float((spy_close.iloc[-1] - spy_close.iloc[-22])  / spy_close.iloc[-22])
+        if n_spy >= 6:
+            spy_ret_5d   = float((spy_close.iloc[-1] - spy_close.iloc[-6])   / spy_close.iloc[-6])
+        if n_spy >= 64:
+            spy_ret_63d  = float((spy_close.iloc[-1] - spy_close.iloc[-64])  / spy_close.iloc[-64])
+        if n_spy >= 127:
+            spy_ret_126d = float((spy_close.iloc[-1] - spy_close.iloc[-127]) / spy_close.iloc[-127])
+        if n_spy >= 190:
+            spy_ret_189d = float((spy_close.iloc[-1] - spy_close.iloc[-190]) / spy_close.iloc[-190])
+        if n_spy >= 253:
+            spy_ret_252d = float((spy_close.iloc[-1] - spy_close.iloc[-253]) / spy_close.iloc[-253])
 
     rows = [
         _metrics_for(t, df, spy_ret_21d, spy_ret_5d)
@@ -385,6 +403,12 @@ def compute_scores(ticker_data: dict) -> pd.DataFrame:
 
     df = pd.DataFrame(rows)
 
+    # ── IBD 四季超額報酬（個股 - SPY，供前端 IBD 排名使用）─────────────────
+    df["excess_63d"]  = df["ret_63d"]  - spy_ret_63d
+    df["excess_126d"] = df["ret_126d"] - spy_ret_126d
+    df["excess_189d"] = df["ret_189d"] - spy_ret_189d
+    df["excess_252d"] = df["ret_252d"] - spy_ret_252d
+
     # ── 百分位排名（原有指標）────────────────────────────────────────────────
     df["_rs_rank"]    = df["rs_vs_spy"].rank(pct=True) * 100
     df["_rs5_rank"]   = df["rs_5d_vs_spy"].rank(pct=True) * 100
@@ -396,8 +420,7 @@ def compute_scores(ticker_data: dict) -> pd.DataFrame:
     # EPS beat placeholder（server.py 合入基本面後才有值）
     df["_eps_beat_rank"] = 50.0
 
-    # ── FinTasticRS RS Rating（v3.1 純斜率版）───────────────────────────────────
-    # 回歸本意：衡量趨勢持續強度，不含 breakout（breakout 已移至 _WEIGHTS 獨立計分）
+    # ── FinTasticRS RS Rating（v3.1 純斜率版）──────────────────────────────────
     slope60_pct  = df["slope_60d"].rank(pct=True)
     slope120_pct = df["slope_120d"].rank(pct=True)
     slope20_pct  = df["slope_20d"].rank(pct=True)
@@ -405,12 +428,11 @@ def compute_scores(ticker_data: dict) -> pd.DataFrame:
     ud_pct       = df["ud_ratio_60d"].rank(pct=True)
 
     rs_raw = (
-        slope60_pct  * 0.35 +   # 60日斜率（主力，趨勢品質）
-        slope120_pct * 0.25 +   # 120日斜率（長期持續性）
-        slope20_pct  * 0.25 +   # 20日斜率（短期動能，兼顧剛啟動標的）
-        p20ma_pct    * 0.08 +   # 價格位置 vs EMA20
-        ud_pct       * 0.07     # 風報比（上行/下行波動）
-        # 合計 1.00，RS Rating = 純斜率趨勢強度
+        slope60_pct  * 0.35 +
+        slope120_pct * 0.25 +
+        slope20_pct  * 0.25 +
+        p20ma_pct    * 0.08 +
+        ud_pct       * 0.07
     )
     rs_min, rs_max = rs_raw.min(), rs_raw.max()
     df["rs_rating"] = (

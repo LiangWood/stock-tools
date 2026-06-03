@@ -143,6 +143,27 @@ html, body {
   font-size: 12px;
 }
 
+/* 大盤指數 */
+#market-indices {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-shrink: 0;
+}
+.idx-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 16px;
+  white-space: nowrap;
+}
+.idx-name  { color: var(--text1); letter-spacing: 0.3px; }
+.idx-price { color: var(--text0); font-weight: 500; }
+.idx-chg   { font-size: 14px; }
+.idx-chg.up   { color: var(--up); }
+.idx-chg.down { color: var(--down); }
+
 /* Separator */
 .vsep {
   width: 1px;
@@ -1125,6 +1146,8 @@ td.signal-cell {
       <button class="tab" data-u="tw">台股</button>
     </div>
 
+    <div id="market-indices"></div>
+
     <div id="header-right">
       <div id="status-badge">
         <div id="status-dot" class="idle"></div>
@@ -1156,6 +1179,7 @@ td.signal-cell {
         <!-- 美股分頁二：RS排名 / 技術面加乘 / 基本面加乘 -->
         <div id="us-strategy-tabs" style="display:none">
           <button class="strategy-btn active" data-strategy="rs">RS排名</button>
+          <button class="strategy-btn" data-strategy="rtf">IBD排名</button>
           <button class="strategy-btn" data-strategy="technical">技術面加乘</button>
           <button class="strategy-btn" data-strategy="fundamental">基本面加乘</button>
         </div>
@@ -1250,6 +1274,7 @@ td.signal-cell {
           <button class="ctrl on"  id="c-day">日K</button>
           <button class="ctrl"     id="c-week">週K</button>
           <div class="ctrl-sep"></div>
+          <button class="ctrl" id="c-ema10"  data-span="10">EMA10</button>
           <button class="ctrl" id="c-ema20"  data-span="20">EMA20</button>
           <button class="ctrl" id="c-ema50"  data-span="50">EMA50</button>
           <button class="ctrl" id="c-ema120" data-span="120">EMA120</button>
@@ -1326,6 +1351,19 @@ const US_RS_COLS = [
   { ...US_COLS.find(c => c.key === 'rs_rating'), label:'RS排名', cls:'score', sticky_right:true },
 ];
 
+// IBD 排名欄位（IBD/Minervini 四季加權漲幅）
+const US_RTF_COLS = [
+  { key:'rank',      label:'RANK',    w:'52px',  align:'center', cls:'rank-cell',   fmt:v=>v??'—', sticky:true },
+  { key:'sector_zh', label:'板塊',    w:'80px',  align:'center', cls:'sector-cell', fmt:v=>v||'—', sticky:true },
+  { key:'ticker',    label:'TICKER',  w:'78px',  align:'left',   cls:'ticker-cell', fmt:v=>v||'—', sticky:true },
+  { key:'price',     label:'PRICE',   w:'80px',  align:'right',  fmt:v=>v!=null?`$${Number.isInteger(v)?v:v.toFixed(2)}`:'—' },
+  { key:'ret_63d',   label:'Q1 3M%',  w:'76px',  align:'right',  cls:'pct', fmt:pct },
+  { key:'ret_126d',  label:'Q2 6M%',  w:'76px',  align:'right',  cls:'pct', fmt:pct },
+  { key:'ret_189d',  label:'Q3 9M%',  w:'76px',  align:'right',  cls:'pct', fmt:pct },
+  { key:'ret_252d',  label:'Q4 12M%', w:'82px',  align:'right',  cls:'pct', fmt:pct },
+  { key:'rtf_score', label:'SCORE',     w:'116px', align:'right', cls:'score', fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
+];
+
 // 台股 RS Score 欄位定義（Minervini 四季度排名）
 const TW_RS_COLS = [
   { key:'rank',       label:'RANK',     w:'60px',  align:'center', cls:'rank-cell',  fmt:v=>v??'—', sticky:true },
@@ -1347,9 +1385,9 @@ const TW_COLS = [
   { key:'price',      label:'PRICE',     w:'82px',  align:'right',  fmt:v=>v!=null?parseFloat(v.toFixed(2)).toString():'—' },
   { key:'_change',    label:'漲跌',      w:'68px',  align:'right',  cls:'change-col',  fmt:v=>'—' },
   { key:'day_return', label:'日%',       w:'68px',  align:'right',  cls:'pct',         fmt:pct },
+  { key:'volume',     label:'成交量(張)', w:'90px',  align:'right',  fmt:v=>v!=null?v.toLocaleString():'—' },
   { key:'ret_10d',    label:'10日%',     w:'68px',  align:'right',  cls:'pct',         fmt:pct },
   { key:'ret_20d',    label:'20日%',     w:'68px',  align:'right',  cls:'pct',         fmt:pct },
-  { key:'volume',     label:'成交量(張)', w:'90px',  align:'right',  fmt:v=>v!=null?v.toLocaleString():'—' },
   { key:'fi_net',         label:'外資(張)',  w:'82px',  align:'right',  cls:'chips',       fmt:v=>v!=null?Math.round(v/1000).toLocaleString():'—' },
   { key:'it_net',         label:'投信(張)',  w:'82px',  align:'right',  cls:'chips',       fmt:v=>v!=null?Math.round(v/1000).toLocaleString():'—' },
   { key:'fi_consec_days', label:'外資連買',  w:'72px',  align:'right',  fmt:v=>v!=null&&v>0?`${v}天`:'—' },
@@ -1384,7 +1422,7 @@ const S = {
   twView:          'stock',   // 台股視圖：'stock' | 'breakout' | 'early'
   twStrategy:      'rs',      // 台股主表策略（向後相容）
   twChipsEnabled:  false,     // 籌碼加乘是否疊加
-  ema:             { 20: false, 50: false, 120: false, 200: false },
+  ema:             { 10: false, 20: false, 50: false, 120: false, 200: false },
 };
 
 let pollTimer    = null;
@@ -1437,12 +1475,14 @@ function cols() {
   if (S.universe === 'tw') {
     return S.twStrategy === 'chips' ? TW_COLS : TW_RS_COLS;
   }
+  if (S.strategyMode === 'rtf') return US_RTF_COLS;
   return S.strategyMode === 'rs' ? US_RS_COLS : US_COLS;
 }
 function scoreKey() {
   if (S.universe === 'tw') {
     return S.twStrategy === 'chips' ? 'tw_score' : 'rs_score';
   }
+  if (S.strategyMode === 'rtf') return 'rtf_score';
   if (S.strategyLayers.fundamental && S.strategyLayers.technical) return '_combo';
   if (S.strategyLayers.fundamental) return 'adjusted_score';
   if (S.strategyLayers.technical) return 'momentum_score';
@@ -1467,7 +1507,11 @@ function applyFilter() {
 }
 
 function sortedData() {
-  let data = strategyFilteredRows([...S.filteredScores]);
+  // RTF 模式：先計算四季加權分數再排序
+  let rawData = S.strategyMode === 'rtf' && S.universe !== 'tw'
+    ? computeRTFScores([...S.filteredScores])
+    : strategyFilteredRows([...S.filteredScores]);
+  let data = rawData;
   const key = S.sortKey || scoreKey();
   if (key) {
     data.sort((a, b) => {
@@ -2020,7 +2064,7 @@ function calcEMA(candles, span) {
   });
 }
 
-const EMA_COLORS = { 20: '#f59e0b', 50: '#38bdf8', 120: '#c084fc', 200: '#ffffff' };
+const EMA_COLORS = { 10: '#34d399', 20: '#f59e0b', 50: '#38bdf8', 120: '#c084fc', 200: '#ffffff' };
 
 function renderChart() {
   if (!S.ohlcvData) return;
@@ -2391,6 +2435,49 @@ async function bootstrapExistingScores() {
 // ══════════════════════════════════════════════════════════════
 //  EVENT WIRING
 // ══════════════════════════════════════════════════════════════
+// ── 大盤指數 ─────────────────────────────────────────────────────────────────
+async function fetchIndices() {
+  const universe = S.universe === 'tw' ? 'tw' : 'us';
+  try {
+    const r = await fetch(`/api/indices?universe=${universe}`);
+    const d = await r.json();
+    renderIndices(d.indices || []);
+  } catch(e) {
+    document.getElementById('market-indices').innerHTML = '';
+  }
+}
+
+function renderIndices(indices) {
+  const el = document.getElementById('market-indices');
+  if (!indices.length) { el.innerHTML = ''; return; }
+  const isTw = S.universe === 'tw';
+  el.innerHTML = indices.map(idx => {
+    const isUp   = idx.change_pct >= 0;
+    // TW：紅漲綠跌；US：綠漲紅跌
+    const upCol  = isTw ? 'var(--down)' : 'var(--up)';
+    const dnCol  = isTw ? 'var(--up)'   : 'var(--down)';
+    const col    = isUp ? upCol : dnCol;
+    const sign   = isUp ? '+' : '';
+    const price  = idx.price >= 1000
+      ? idx.price.toLocaleString('en-US', {maximumFractionDigits: 0})
+      : idx.price.toFixed(2);
+    // 台股顯示絕對點數差，美股顯示百分比
+    let chgDisplay;
+    if (isTw && idx.change != null) {
+      chgDisplay = Math.abs(idx.change) >= 10
+        ? `${sign}${Math.round(idx.change).toLocaleString()}`
+        : `${sign}${idx.change.toFixed(2)}`;
+    } else {
+      chgDisplay = `${sign}${idx.change_pct.toFixed(2)}%`;
+    }
+    return `<span class="idx-item">
+      <span class="idx-name">${idx.name}</span>
+      <span class="idx-price">${price}</span>
+      <span class="idx-chg" style="color:${col}">${chgDisplay}</span>
+    </span>`;
+  }).join('<span style="color:var(--border);padding:0 4px;font-size:10px">·</span>');
+}
+
 // ── 個股 / 板塊 / BREAKOUT 視角切換 ─────────────────────────────────────────
 let _currentView = 'stock'; // 'stock' | 'sector' | 'breakout'
 
@@ -2409,11 +2496,12 @@ function updateStrategyTabs() {
     // 更新美股策略 tab active 狀態
     usStratTabs.querySelectorAll('.strategy-btn').forEach(b => {
       const mode = b.dataset.strategy;
-      const active = mode === 'rs'
+      const active = (mode === 'rtf' && S.strategyMode === 'rtf')
+        || (mode === 'rs' && S.strategyMode !== 'rtf')
         || (mode === 'technical'   && S.strategyLayers.technical)
         || (mode === 'fundamental' && S.strategyLayers.fundamental);
       b.classList.toggle('active', active);
-      b.classList.toggle('base', mode === 'rs');
+      b.classList.toggle('base', mode === 'rs' && S.strategyMode !== 'rtf');
     });
   }
 
@@ -2668,15 +2756,37 @@ document.querySelectorAll('.tab').forEach(btn => {
     S.strategyMode = 'rs';
     S.twView = 'stock';    // 切換 universe 時重設台股 view
     S.twStrategy = 'rs';
+    fetchIndices();
     S.strategyLayers = { technical: false, fundamental: false };
     S.sortKey = null;
     S.selectedTicker = null; S.ohlcvData = null;
     // 切換時回到個股視角，並顯示/隱藏切換按鈕
     setView('stock');
     const toggle = document.getElementById('view-toggle');
-    
     updateStrategyTabs();
     renderHead(); renderBody();
+
+    // 從 server 自動載入對應宇宙的快取資料
+    (async () => {
+      try {
+        const st = await fetch('/api/state').then(r => r.json());
+        const newU = btn.dataset.u;
+        const serverU = st.universe || 'all';
+        // 美股：server 有任何 US 資料就載入
+        // 台股：server 有 tw 資料就載入
+        const hasData = st.status === 'done' && st.count > 0 &&
+          (newU === 'tw' ? serverU === 'tw' : serverU !== 'tw');
+        if (hasData) {
+          if (newU === 'tw') {
+            await loadTwStrategy(S.twStrategy || 'rs');
+          } else {
+            await loadScores({ resetSort: true });
+          }
+          setStatus('done', `更新 ${st.last_updated}`);
+          document.getElementById('updated-label').textContent = `更新：${st.last_updated}`;
+        }
+      } catch(_) {}
+    })();
     document.getElementById('chart-symbol').textContent     = '—';
     document.getElementById('chart-live-price').textContent = '';
     document.getElementById('chart-ohlc').className         = '';
@@ -2700,19 +2810,45 @@ document.querySelectorAll('.view-btn').forEach(btn => {
   btn.addEventListener('click', () => setView(btn.dataset.view));
 });
 
-// 美股策略 tab 事件（RS排名 / 技術面加乘 / 基本面加乘）
+// IBD RS Score 計算（client-side）
+// 使用 個股報酬 - SPY報酬 的超額報酬加權，忠實還原 RTF 策略核心
+// Q1×40% + Q2×20% + Q3×20% + Q4×20%（各季 ~63 交易日超額報酬）
+function computeRTFScores(scores) {
+  const withRaw = scores.map(r => ({
+    ...r,
+    _rtf_raw: (r.excess_63d  ?? r.ret_63d  ?? 0) * 0.40 +
+              (r.excess_126d ?? r.ret_126d ?? 0) * 0.20 +
+              (r.excess_189d ?? r.ret_189d ?? 0) * 0.20 +
+              (r.excess_252d ?? r.ret_252d ?? 0) * 0.20,
+  }));
+  // 全市場百分位轉換 → 1-99
+  const sorted = [...withRaw].sort((a, b) => a._rtf_raw - b._rtf_raw);
+  const n = sorted.length;
+  const rankMap = {};
+  sorted.forEach((r, i) => { rankMap[r.ticker] = Math.max(1, Math.ceil((i + 1) / n * 99)); });
+  return withRaw.map(r => ({ ...r, rtf_score: rankMap[r.ticker] ?? 50 }))
+    .sort((a, b) => b.rtf_score - a.rtf_score)
+    .map((r, i) => ({ ...r, rank: i + 1 }));
+}
+
+// 美股策略 tab 事件（RS排名 / 技術面加乘 / 基本面加乘 / IBD排名）
 document.querySelectorAll('#us-strategy-tabs .strategy-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const mode = btn.dataset.strategy;
-    if (mode === 'rs') {
+    if (mode === 'rtf') {
+      S.strategyMode = 'rtf';
+      S.strategyLayers = { technical: false, fundamental: false };
+    } else if (mode === 'rs') {
       S.strategyMode = 'rs';
       S.strategyLayers = { technical: false, fundamental: false };
     } else if (mode === 'technical') {
+      if (S.strategyMode === 'rtf') { S.strategyMode = 'rs'; }
       const next = !S.strategyLayers.technical;
       S.strategyLayers.technical = next;
       if (!next) S.strategyLayers.fundamental = false;
       S.strategyMode = S.strategyLayers.fundamental ? 'fundamental' : (next ? 'technical' : 'rs');
     } else if (mode === 'fundamental') {
+      if (S.strategyMode === 'rtf') { S.strategyMode = 'rs'; }
       const next = !S.strategyLayers.fundamental;
       S.strategyLayers.fundamental = next;
       S.strategyMode = next ? 'fundamental' : (S.strategyLayers.technical ? 'technical' : 'rs');
@@ -2874,9 +3010,9 @@ async function renderTwEarlyStageView() {
     ${TH('52px','center','RANK')}
     ${TH('160px','left','標的')}
     ${TH('82px','right','PRICE')}
-    ${TH('88px','right','成交量(張)')}
     ${TH('70px','right','漲跌')}
     ${TH('70px','right','當日%')}
+    ${TH('88px','right','成交量(張)')}
     ${TH('80px','right','BREAKOUT')}
     ${TH('80px','right','slope_20d')}
     ${TH('80px','right','slope_60d')}
@@ -2910,9 +3046,9 @@ async function renderTwEarlyStageView() {
       <td style="text-align:center;color:var(--text2);padding:8px 10px;font-size:16px">${i+1}</td>
       <td style="text-align:left;padding:8px 10px" class="ticker-cell">${nameEl}</td>
       <td style="text-align:right;padding:8px 10px;font-size:16px;${limBg}color:${cellColor}">${r.price!=null?r.price.toFixed(2):'—'}</td>
-      <td style="text-align:right;padding:8px 10px;font-size:16px;color:var(--text0)">${r.volume!=null?r.volume.toLocaleString():'—'}</td>
       <td style="text-align:right;padding:8px 10px;font-size:16px;${limBg}color:${cellColor}">${chgStr}</td>
       <td style="text-align:right;padding:8px 10px;font-size:16px;${limBg}color:${cellColor}">${pct(r.day_return)}</td>
+      <td style="text-align:right;padding:8px 10px;font-size:16px;color:var(--text0)">${r.volume!=null?r.volume.toLocaleString():'—'}</td>
       <td style="text-align:right;color:${bkCol};font-weight:600;padding:8px 10px;font-size:16px">${(r.breakout_score||0).toFixed(1)}</td>
       <td style="text-align:right;color:var(--up);padding:8px 10px;font-size:16px">+${(r.slope_20d||0).toFixed(3)}</td>
       <td style="text-align:right;color:var(--down);padding:8px 10px;font-size:16px">${(r.slope_60d||0).toFixed(3)}</td>
@@ -2949,7 +3085,7 @@ document.getElementById('c-week').addEventListener('click', () => {
 });
 
 // EMA buttons
-['c-ema20','c-ema50','c-ema120','c-ema200'].forEach(id => {
+['c-ema10','c-ema20','c-ema50','c-ema120','c-ema200'].forEach(id => {
   const btn  = document.getElementById(id);
   const span = parseInt(btn.dataset.span);
   btn.addEventListener('click', () => {
@@ -2967,6 +3103,7 @@ updateStrategyTabs();
 renderHead();
 renderBody();
 bootstrapExistingScores();
+fetchIndices();
 
 // ── 關閉 / 展開圖表 ──
 document.getElementById('close-chart-btn').addEventListener('click', () => {
