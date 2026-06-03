@@ -265,81 +265,13 @@ def compute_tw_rs_scores(ticker_data: dict) -> pd.DataFrame:
     return result
 
 
-def compute_tw_breakout_candidates(ticker_data: dict) -> pd.DataFrame:
+def compute_tw_observation_candidates(ticker_data: dict) -> tuple:
     """
-    台股突破觀察：全市場掃描，不受 Top-N 限制。
-    篩選條件：slope_20d > 0（近期翻多）+ slope_60d < 0（前期弱）+ breakout > 50
+    單次全市場掃描，同時產出突破觀察 + 起漲觀察（避免重複計算）。
+
+    Returns:
+        (breakout_df, early_stage_df)
     """
-    records = []
-    for ticker, d in ticker_data.items():
-        if d is None:
-            continue
-        ohlcv = d.get("ohlcv")
-        if ohlcv is None or ohlcv.empty:
-            continue
-        close  = ohlcv["Close"].dropna()
-        volume = ohlcv["Volume"].dropna() if "Volume" in ohlcv else close
-        high   = ohlcv["High"].dropna()  if "High"  in ohlcv else close
-        low    = ohlcv["Low"].dropna()   if "Low"   in ohlcv else close
-
-        if len(close) < 60 or float(close.iloc[-1]) <= 0:
-            continue
-        if d.get("volume", 0) <= 0:
-            continue
-
-        s20 = _linear_slope(close, 20)
-        s60 = _linear_slope(close, 60)
-        bk  = _breakout_score(close, high, low, volume)
-
-        if s20 <= 0 or s60 >= 0.05 or bk <= 50:
-            continue
-
-        n = len(close)
-        day_return = d.get("day_return")
-        if day_return is None:
-            day_return = float((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2]) if n >= 2 else 0.0
-        ret_20d    = float((close.iloc[-1] - close.iloc[-21]) / close.iloc[-21]) if n >= 21 else 0.0
-
-        records.append({
-            "ticker":        ticker,
-            "stock_id":      ticker.split(".")[0],
-            "name":          d.get("name", ""),
-            "price":         d.get("price", float(close.iloc[-1])),
-            "day_return":    day_return,
-            "ret_20d":       ret_20d,
-            "slope_20d":     s20,
-            "slope_60d":     s60,
-            "breakout_score": bk,
-            "rsi":           calculate_rsi(close),
-            "is_limit_up":   d.get("is_limit_up", False),
-        })
-
-    if not records:
-        return pd.DataFrame()
-    return (
-        pd.DataFrame(records)
-        .sort_values("breakout_score", ascending=False)
-        .reset_index(drop=True)
-    )
-
-
-def compute_tw_early_stage_candidates(ticker_data: dict) -> pd.DataFrame:
-    """
-    台股起漲觀察：捕捉技術剛翻正 + 法人悄悄進場、尚未大漲的股票。
-
-    篩選條件：
-      - slope_20d > 0  （近期翻多）
-      - slope_60d < 0  （前期弱，未噴發）
-      - breakout_score < 50  （蓄勢中，與突破觀察互斥）
-      - RS Score 30~65（中低位，仍有空間）
-      - fi_net > 0 OR it_consec_days >= 3（法人進場）
-
-    排序依起漲潛力分：
-      rs_score×0.40 + breakout_score×0.30
-      + 投信連買加分（>=3天 → +30）
-      + 外資進場加分（fi_net > 0 → +20）
-    """
-    # ── Step 1：計算所有股票的 Q1-Q4 漲幅（供百分位排名）──────────────────
     raw_records = []
     for ticker, d in ticker_data.items():
         if d is None:
@@ -360,18 +292,26 @@ def compute_tw_early_stage_candidates(ticker_data: dict) -> pd.DataFrame:
         if d.get("stock_type", "stock") != "stock":
             continue
 
+        s20 = _linear_slope(close, 20)
+        s60 = _linear_slope(close, 60)
+        # 只計算 slope 有翻多跡象的才繼續（提前 early exit）
+        if s20 <= 0 or s60 >= 0.05:
+            continue
+
+        bk  = _breakout_score(close, high, low, volume)
+        va  = _vol_accel(volume)
+        rsi = calculate_rsi(close)
+
+        # Q1-Q4 漲幅（供起漲觀察 RS Score 計算）
         q1 = float((close.iloc[-1]   - close.iloc[-64])  / close.iloc[-64])  if n >= 64  else None
         q2 = float((close.iloc[-64]  - close.iloc[-127]) / close.iloc[-127]) if n >= 127 else None
         q3 = float((close.iloc[-127] - close.iloc[-190]) / close.iloc[-190]) if n >= 190 else None
         q4 = float((close.iloc[-190] - close.iloc[-253]) / close.iloc[-253]) if n >= 253 else None
 
-        s20 = _linear_slope(close, 20)
-        s60 = _linear_slope(close, 60)
-        bk  = _breakout_score(close, high, low, volume)
-
         day_return = d.get("day_return")
         if day_return is None:
             day_return = float((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2]) if n >= 2 else 0.0
+        ret_20d = float((close.iloc[-1] - close.iloc[-21]) / close.iloc[-21]) if n >= 21 else 0.0
 
         raw_records.append({
             "ticker":          ticker,
@@ -379,6 +319,7 @@ def compute_tw_early_stage_candidates(ticker_data: dict) -> pd.DataFrame:
             "name":            d.get("name", ""),
             "price":           d.get("price", float(close.iloc[-1])),
             "day_return":      day_return,
+            "ret_20d":         ret_20d,
             "q1_ret":          q1,
             "q2_ret":          q2,
             "q3_ret":          q3,
@@ -386,21 +327,31 @@ def compute_tw_early_stage_candidates(ticker_data: dict) -> pd.DataFrame:
             "slope_20d":       s20,
             "slope_60d":       s60,
             "breakout_score":  bk,
+            "vol_accel":       va,
+            "rsi":             rsi,
+            "volume":          d.get("volume", 0),
             "fi_net":          d.get("fi_net", 0.0),
             "it_consec_days":  d.get("it_consec_days", 0),
             "is_limit_up":     d.get("is_limit_up", False),
         })
 
     if not raw_records:
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
     df = pd.DataFrame(raw_records)
 
-    # ── Step 2：全市場百分位排名 → RS Score ─────────────────────────────────
-    for col in ["q1_ret", "q2_ret", "q3_ret", "q4_ret"]:
-        rank_col = f"_{col}_rank"
-        df[rank_col] = df[col].rank(pct=True, na_option="bottom") * 99
+    # ── 突破觀察：breakout > 50 ───────────────────────────────────────────────
+    bk_df = (
+        df[df["breakout_score"] > 50]
+        [["ticker", "stock_id", "name", "price", "day_return", "ret_20d",
+          "slope_20d", "slope_60d", "breakout_score", "rsi", "is_limit_up"]]
+        .sort_values("breakout_score", ascending=False)
+        .reset_index(drop=True)
+    )
 
+    # ── 起漲觀察：計算 RS Score 後篩選 ───────────────────────────────────────
+    for col in ["q1_ret", "q2_ret", "q3_ret", "q4_ret"]:
+        df[f"_{col}_rank"] = df[col].rank(pct=True, na_option="bottom") * 99
     df["rs_score"] = (
         df["_q1_ret_rank"] * 0.50 +
         df["_q2_ret_rank"] * 0.25 +
@@ -408,35 +359,44 @@ def compute_tw_early_stage_candidates(ticker_data: dict) -> pd.DataFrame:
         df["_q4_ret_rank"] * 0.10
     )
 
-    # ── Step 3：篩選條件 ─────────────────────────────────────────────────────
-    mask = (
-        (df["slope_20d"] > 0) &
-        (df["slope_60d"] < 0) &
-        (df["breakout_score"] < 50) &
-        (df["rs_score"] >= 30) & (df["rs_score"] <= 65) &
+    early_mask = (
+        (df["breakout_score"] >= 15) & (df["breakout_score"] < 50) &
+        (df["rs_score"] >= 30) & (df["rs_score"] <= 80) &
+        (df["vol_accel"] > 0.9) &
         ((df["fi_net"] > 0) | (df["it_consec_days"] >= 3))
     )
-    df = df[mask].copy()
+    early = df[early_mask].copy()
+    if not early.empty:
+        early["early_score"] = (
+            early["rs_score"]       * 0.40 +
+            early["breakout_score"] * 0.30 +
+            early["it_consec_days"].apply(lambda x: 30 if x >= 3 else 0) +
+            early["fi_net"].apply(lambda x: 20 if x > 0 else 0)
+        )
+        early_df = (
+            early[["ticker", "stock_id", "name", "price", "day_return",
+                   "volume", "rs_score", "breakout_score", "slope_20d", "slope_60d",
+                   "fi_net", "it_consec_days", "is_limit_up", "early_score"]]
+            .sort_values("early_score", ascending=False)
+            .head(50)
+            .reset_index(drop=True)
+        )
+    else:
+        early_df = pd.DataFrame()
 
-    if df.empty:
-        return pd.DataFrame()
+    return bk_df, early_df
 
-    # ── Step 4：起漲潛力分 & 排序 ────────────────────────────────────────────
-    df["early_score"] = (
-        df["rs_score"]       * 0.40 +
-        df["breakout_score"] * 0.30 +
-        df["it_consec_days"].apply(lambda x: 30 if x >= 3 else 0) +
-        df["fi_net"].apply(lambda x: 20 if x > 0 else 0)
-    )
 
-    return (
-        df[["ticker", "stock_id", "name", "price", "day_return",
-            "rs_score", "breakout_score", "slope_20d", "slope_60d",
-            "fi_net", "it_consec_days", "is_limit_up", "early_score"]]
-        .sort_values("early_score", ascending=False)
-        .head(50)
-        .reset_index(drop=True)
-    )
+def compute_tw_breakout_candidates(ticker_data: dict) -> pd.DataFrame:
+    """突破觀察（向後相容入口，實際由 compute_tw_observation_candidates 計算）"""
+    bk_df, _ = compute_tw_observation_candidates(ticker_data)
+    return bk_df
+
+
+def compute_tw_early_stage_candidates(ticker_data: dict) -> pd.DataFrame:
+    """起漲觀察（向後相容入口，實際由 compute_tw_observation_candidates 計算）"""
+    _, early_df = compute_tw_observation_candidates(ticker_data)
+    return early_df
 
 
 def compute_tw_scores(ticker_data: dict) -> pd.DataFrame:

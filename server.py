@@ -26,7 +26,7 @@ from data.universe import get_combined_tickers, get_nasdaq100_tickers, get_sp500
 from scoring.engine import apply_contextual_scoring, compute_scores, compute_breakout_candidates
 from scoring.tw_engine import (
     compute_tw_scores, compute_tw_rs_scores,
-    compute_tw_breakout_candidates, compute_tw_early_stage_candidates,
+    compute_tw_observation_candidates,
 )
 
 logger = logging.getLogger(__name__)
@@ -545,11 +545,8 @@ def _fetch_worker(universe: str):
                 _state["progress"] = "計算籌碼分數…"
             scores_df = compute_tw_scores(raw)
             with _lock:
-                _state["progress"] = "掃描突破候選…"
-            tw_bk_df = compute_tw_breakout_candidates(raw)
-            with _lock:
-                _state["progress"] = "掃描起漲候選…"
-            tw_early_df = compute_tw_early_stage_candidates(raw)
+                _state["progress"] = "掃描突破 / 起漲候選…"
+            tw_bk_df, tw_early_df = compute_tw_observation_candidates(raw)
             with _lock:
                 _state["progress"] = "整理 K 線資料…"
             ohlcv = {t: _ohlcv_to_json(d.get("ohlcv")) for t, d in raw.items() if d}

@@ -97,7 +97,7 @@ try:
     from data.twse_fetcher import fetch_tw_all
     from scoring.tw_engine import (
         compute_tw_scores, compute_tw_rs_scores,
-        compute_tw_breakout_candidates, compute_tw_early_stage_candidates,
+        compute_tw_observation_candidates,
     )
 
     logger.info("Fetching TW stocks…")
@@ -109,11 +109,8 @@ try:
     logger.info("Computing TW RS scores…")
     tw_rs_df = compute_tw_rs_scores(tw_raw)
 
-    logger.info("Computing TW breakout candidates…")
-    tw_bk_df = compute_tw_breakout_candidates(tw_raw)
-
-    logger.info("Computing TW early-stage candidates…")
-    tw_early_df = compute_tw_early_stage_candidates(tw_raw)
+    logger.info("Computing TW observation candidates (breakout + early-stage)…")
+    tw_bk_df, tw_early_df = compute_tw_observation_candidates(tw_raw)
 
     save("tw_scores", {
         "universe": "tw",

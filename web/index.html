@@ -688,10 +688,12 @@ td.breakout-cell {
 }
 
 /* 個股/板塊視角切換 */
-#view-toggle {
+#view-toggle,
+#tw-view-tabs {
   display: flex;
   gap: 2px;
   flex-shrink: 0;
+  margin-right: 8px;
 }
 .view-btn {
   padding: 4px 12px;
@@ -707,6 +709,15 @@ td.breakout-cell {
 }
 .view-btn:hover { border-color: var(--accent); color: var(--accent); }
 .view-btn.active { background: var(--accent-lo); border-color: var(--accent); color: var(--accent); }
+
+.tw-strategy-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+  border-color: var(--border) !important;
+  color: var(--text2) !important;
+  background: transparent !important;
+}
 
 /* 板塊總覽表 */
 #sector-table th {
@@ -1191,8 +1202,9 @@ td.signal-cell {
           <div style="padding:10px 16px 6px; font-size:12px; color:var(--text1); border-bottom:1px solid var(--border); background:var(--bg1)">
             篩選：<span style="color:var(--up)">slope_20d &gt; 0</span>（近期翻多）＋
             <span style="color:var(--gold)">slope_60d &lt; 0</span>（尚未大漲）＋
-            <span style="color:var(--text2)">breakout &lt; 50</span>（蓄勢中）＋
-            <span style="color:var(--accent)">RS Score 30~65</span>＋
+            <span style="color:var(--text2)">breakout 15~50</span>（蓄勢中）＋
+            <span style="color:var(--accent)">RS Score 30~80</span>＋
+            <span style="color:#60a5fa">vol_accel &gt; 0.9</span>（量能放大）＋
             <span style="color:#a78bfa">法人進場</span>
             — 布局期觀察清單，非動能排行
           </div>
@@ -1369,8 +1381,9 @@ const S = {
   historyPeriod:   'max',
   strategyMode:    'rs',
   strategyLayers:  { technical: false, fundamental: false },
-  twView:          'stock',  // 台股視圖：'stock' | 'breakout' | 'early'
-  twStrategy:      'rs',     // 台股主表策略：'rs' | 'chips'
+  twView:          'stock',   // 台股視圖：'stock' | 'breakout' | 'early'
+  twStrategy:      'rs',      // 台股主表策略（向後相容）
+  twChipsEnabled:  false,     // 籌碼加乘是否疊加
   ema:             { 20: false, 50: false, 120: false, 200: false },
 };
 
@@ -2416,9 +2429,15 @@ function updateStrategyTabs() {
   // 台股 strategy tabs（RS排名 / 籌碼加乘）— 只在主表顯示
   const twStratTabs = document.getElementById('tw-strategy-tabs');
   if (twStratTabs) {
-    twStratTabs.style.display = (isTw && S.twView === 'stock') ? 'flex' : 'none';
+    twStratTabs.style.display = isTw ? 'flex' : 'none';
+    const inObsView = isTw && S.twView !== 'stock';
     twStratTabs.querySelectorAll('.tw-strategy-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.strategy === S.twStrategy);
+      const isActive = !inObsView && (
+        b.dataset.strategy === 'rs' ||
+        (b.dataset.strategy === 'chips' && S.twChipsEnabled)
+      );
+      b.classList.toggle('active', isActive);
+      b.disabled = inObsView;
     });
   }
 }
@@ -2723,27 +2742,47 @@ document.querySelectorAll('#tw-view-tabs .view-btn[data-twview]').forEach(btn =>
   });
 });
 
-// 台股策略 tab（RS排名 / 籌碼加乘）
+// 台股策略 tab
+// RS排名：底層，始終啟用（不可取消）
+// 籌碼加乘：疊加過濾器，可 toggle
 document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    S.twStrategy = btn.dataset.strategy;
-    updateStrategyTabs();
-    loadTwStrategy(S.twStrategy);
+    if (btn.disabled) return;
+    const mode = btn.dataset.strategy;
+    if (mode === 'rs') return;  // RS排名 無法取消
+    // 籌碼加乘：toggle
+    S.twChipsEnabled = !S.twChipsEnabled;
+    document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(b => {
+      if (b.dataset.strategy === 'rs')    b.classList.add('active');
+      if (b.dataset.strategy === 'chips') b.classList.toggle('active', S.twChipsEnabled);
+    });
+    loadTwStrategyMulti();
   });
 });
 
-// 台股策略載入函數
-async function loadTwStrategy(mode) {
+// 台股策略載入（支援 RS + 籌碼疊加）
+async function loadTwStrategyMulti() {
   S.sortKey = null;
-  const url = IS_STATIC
-    ? `${STATIC_BASE}/${mode === 'rs' ? 'tw_rs_scores.json' : 'tw_scores.json'}`
-    : (mode === 'rs' ? '/api/tw-rs-scores' : '/api/tw-scores');
+  let scores = [];
   try {
-    const r = await fetch(url);
-    const d = await r.json();
-    S.scores = d.scores || [];
+    const rsUrl = IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores';
+    const rsD = await (await fetch(rsUrl)).json();
+    scores = rsD.scores || [];
+
+    if (S.twChipsEnabled && scores.length) {
+      // 籌碼加乘：取兩者交集（同時出現在籌碼排名中）
+      const chipsUrl = IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-scores';
+      const chipsD = await (await fetch(chipsUrl)).json();
+      const chipsSet = new Set((chipsD.scores || []).map(r => r.ticker));
+      scores = scores.filter(r => chipsSet.has(r.ticker));
+    }
   } catch(e) { console.warn('tw strategy fetch failed', e); }
+  S.scores = scores;
   applyFilter(); renderHead(); renderBody();
+}
+
+async function loadTwStrategy(mode) {
+  await loadTwStrategyMulti();
 }
 
 // 台股突破觀察渲染
@@ -2832,9 +2871,10 @@ async function renderTwEarlyStageView() {
   const TH = (w, align, label) =>
     `<th style="width:${w};padding:8px 10px;font-size:10px;color:var(--text1);text-align:${align}">${label}</th>`;
   thead.innerHTML = `<tr style="background:var(--bg1)">
-    ${TH('44px','center','#')}
+    ${TH('52px','center','RANK')}
     ${TH('160px','left','標的')}
     ${TH('82px','right','PRICE')}
+    ${TH('88px','right','成交量(張)')}
     ${TH('70px','right','漲跌')}
     ${TH('70px','right','當日%')}
     ${TH('80px','right','BREAKOUT')}
@@ -2870,6 +2910,7 @@ async function renderTwEarlyStageView() {
       <td style="text-align:center;color:var(--text2);padding:8px 10px;font-size:16px">${i+1}</td>
       <td style="text-align:left;padding:8px 10px" class="ticker-cell">${nameEl}</td>
       <td style="text-align:right;padding:8px 10px;font-size:16px;${limBg}color:${cellColor}">${r.price!=null?r.price.toFixed(2):'—'}</td>
+      <td style="text-align:right;padding:8px 10px;font-size:16px;color:var(--text0)">${r.volume!=null?r.volume.toLocaleString():'—'}</td>
       <td style="text-align:right;padding:8px 10px;font-size:16px;${limBg}color:${cellColor}">${chgStr}</td>
       <td style="text-align:right;padding:8px 10px;font-size:16px;${limBg}color:${cellColor}">${pct(r.day_return)}</td>
       <td style="text-align:right;color:${bkCol};font-weight:600;padding:8px 10px;font-size:16px">${(r.breakout_score||0).toFixed(1)}</td>
