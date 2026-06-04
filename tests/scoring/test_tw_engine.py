@@ -137,6 +137,56 @@ def test_margin_chg_reverse_scoring():
     assert low_score > high_score
 
 
+def test_tw_chips_score_does_not_require_bullish_technicals_or_rsi_range():
+    weak_ohlcv = _make_ohlcv(trend="down")
+    data = {
+        "CHIPS.TW": _make_stock(
+            fi_net=5_000_000,
+            it_net=3_000_000,
+            margin_chg=-500,
+            day_return=-0.02,
+            ohlcv=weak_ohlcv,
+        ),
+        "BASE.TW": _make_stock(
+            fi_net=100,
+            it_net=100,
+            margin_chg=500,
+            day_return=0.01,
+            ohlcv=_make_ohlcv(),
+        ),
+    }
+
+    result = compute_tw_scores(data)
+
+    assert "CHIPS.TW" in set(result["ticker"])
+
+
+def test_tw_chips_score_prefers_institutional_flows_over_breakout_only():
+    chip_stock = _make_stock(
+        fi_net=5_000_000,
+        it_net=3_000_000,
+        inst_net=8_000_000,
+        it_consec_days=5,
+        fi_consec_days=4,
+        margin_chg=-500,
+    )
+    breakout_only = _make_stock(
+        fi_net=0,
+        it_net=0,
+        inst_net=0,
+        it_consec_days=0,
+        fi_consec_days=0,
+        margin_chg=500,
+        day_return=0.1,
+    )
+    data = {"CHIPS.TW": chip_stock, "BREAKOUT.TW": breakout_only}
+
+    result = compute_tw_scores(data)
+    ranked = result.set_index("ticker")
+
+    assert ranked.loc["CHIPS.TW", "tw_score"] > ranked.loc["BREAKOUT.TW", "tw_score"]
+
+
 def test_none_ohlcv_handled():
     data = {
         "GOOD.TW": _make_stock(ohlcv=_make_ohlcv()),

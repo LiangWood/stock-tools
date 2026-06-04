@@ -76,7 +76,7 @@ def apply_hard_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
         df = df[mask]
 
     # --- RSI 區間過濾（不追高、不買弱勢）---
-    if "rsi" in df.columns:
+    if "rsi" in df.columns and "rsi_range" in filters:
         rsi_cfg = filters["rsi_range"]
         mask = (df["rsi"] >= rsi_cfg["min"]) & (df["rsi"] <= rsi_cfg["max"])
         reasons["rsi"] = len(df) - mask.sum()

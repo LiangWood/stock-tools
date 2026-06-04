@@ -21,9 +21,11 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from data.fetcher import fetch_all
+from data.binance_fetcher import fetch_crypto_all, fetch_crypto_ticker_map
 from data.twse_fetcher import fetch_tw_all
 from data.universe import get_combined_tickers, get_nasdaq100_tickers, get_sp500_tickers
 from scoring.engine import apply_contextual_scoring, compute_scores, compute_breakout_candidates
+from scoring.crypto_engine import compute_crypto_rs_scores
 from scoring.tw_engine import (
     compute_tw_scores, compute_tw_rs_scores,
     compute_tw_observation_candidates,
@@ -56,6 +58,7 @@ _state: dict = {
     "tw_rs_scores": [],             # 台股 RS Score 排名
     "tw_breakout_candidates": [],   # 台股突破觀察清單
     "tw_early_stage": [],           # 台股起漲觀察清單
+    "crypto_rs_scores": [],         # 加密貨幣 RS 排名
     "ohlcv": {},
     "universe": "sp500",
     "last_updated": None,
@@ -466,7 +469,9 @@ def _refresh_live_scores(universe: str) -> tuple[list[dict], dict]:
     快速即時更新：用 fast_info 並行抓最新報價，不重新下載 OHLCV。
     每支股票約 0.2–0.5s，20 個 worker 跑 100 檔約 1–3 秒。
     """
-    del universe
+    if universe == "crypto":
+        return _refresh_crypto_live_scores()
+
     import yfinance as yf
 
     with _lock:
@@ -501,6 +506,66 @@ def _refresh_live_scores(universe: str) -> tuple[list[dict], dict]:
         updated_scores.append(row)
 
     return updated_scores, {}   # 不更新 OHLCV，只更新報價
+
+
+def _ohlcv_json_to_df(data: dict | None):
+    if not data:
+        return None
+    dates = data.get("dates") or []
+    closes = data.get("close") or []
+    if not dates or not closes or len(dates) != len(closes):
+        return None
+    df = pd.DataFrame({
+        "Open": data.get("open") or closes,
+        "High": data.get("high") or closes,
+        "Low": data.get("low") or closes,
+        "Close": closes,
+        "Volume": data.get("volume") or [0] * len(closes),
+    }, index=pd.to_datetime(dates))
+    return df
+
+
+def _refresh_crypto_live_scores() -> tuple[list[dict], dict]:
+    """Refresh crypto prices from Binance 24h tickers and recompute cached RS ranks."""
+    with _lock:
+        cached_ohlcv = {ticker: dict(data) for ticker, data in _state["ohlcv"].items() if data}
+
+    if not cached_ohlcv:
+        raise ValueError("no cached crypto OHLCV for live refresh")
+
+    tickers = fetch_crypto_ticker_map()
+    raw: dict[str, dict] = {}
+    updated_ohlcv: dict[str, dict] = {}
+
+    for ticker, data in cached_ohlcv.items():
+        quote = tickers.get(ticker, {})
+        df = _ohlcv_json_to_df(data)
+        if df is None or df.empty:
+            continue
+        price = _safe_float(quote.get("price"))
+        volume = _safe_float(quote.get("volume"))
+        if price is not None and price > 0:
+            last_idx = df.index[-1]
+            df.loc[last_idx, "Close"] = price
+            df.loc[last_idx, "High"] = max(float(df.loc[last_idx, "High"]), price)
+            df.loc[last_idx, "Low"] = min(float(df.loc[last_idx, "Low"]), price)
+            if volume is not None and volume > 0:
+                df.loc[last_idx, "Volume"] = volume
+        raw[ticker] = {
+            "ticker": ticker,
+            "name": ticker.removesuffix("USDT"),
+            "price": quote.get("price", price or 0.0),
+            "day_return": quote.get("day_return", 0.0),
+            "quote_volume": quote.get("quote_volume", 0.0),
+            "volume": quote.get("volume", 0.0),
+            "ohlcv": df,
+        }
+        updated = _ohlcv_to_json(df)
+        if updated:
+            updated_ohlcv[ticker] = updated
+
+    scores_df = compute_crypto_rs_scores(raw)
+    return _df_to_records(scores_df), updated_ohlcv
 
 
 def _df_to_records(df) -> list[dict]:
@@ -560,6 +625,22 @@ def _fetch_worker(universe: str):
                 _state["universe"]              = universe
                 _state["last_updated"]          = datetime.now().strftime("%H:%M:%S")
                 _state["progress"]              = "完成"
+        elif universe == "crypto":
+            raw = fetch_crypto_all(progress_callback=progress)
+            with _lock:
+                _state["progress"] = "計算加密貨幣 RS Rating…"
+            crypto_rs_df = compute_crypto_rs_scores(raw)
+            with _lock:
+                _state["progress"] = "整理 K 線資料…"
+            ohlcv = {t: _ohlcv_to_json(d.get("ohlcv")) for t, d in raw.items() if d}
+            with _lock:
+                _state["status"]           = "done"
+                _state["scores"]           = _df_to_records(crypto_rs_df)
+                _state["crypto_rs_scores"] = _df_to_records(crypto_rs_df)
+                _state["ohlcv"]            = {k: v for k, v in ohlcv.items() if v}
+                _state["universe"]         = universe
+                _state["last_updated"]     = datetime.now().strftime("%H:%M:%S")
+                _state["progress"]         = "完成"
         else:
             tickers = _US_UNIVERSES.get(universe, get_sp500_tickers)()
             if "SPY" not in tickers:
@@ -751,6 +832,11 @@ class Handler(BaseHTTPRequestHandler):
                         return
                 self._json({"candidates": tw_early})
 
+            elif route == "/api/crypto-rs-scores":
+                with _lock:
+                    crypto_rs = _state.get("crypto_rs_scores", []) if _state.get("universe") == "crypto" else []
+                self._json({"scores": crypto_rs})
+
             elif route == "/api/ohlcv":
                 ticker = params.get("ticker", [""])[0]
                 with _lock:
@@ -760,6 +846,39 @@ class Handler(BaseHTTPRequestHandler):
             elif route == "/api/indices":
                 universe = params.get("universe", ["us"])[0]
                 try:
+                    if universe == "crypto":
+                        import requests
+
+                        result = []
+                        for name, symbol in (("BTC", "BTCUSDT"), ("ETH", "ETHUSDT")):
+                            payload = requests.get(
+                                "https://api.binance.com/api/v3/ticker/24hr",
+                                params={"symbol": symbol},
+                                timeout=10,
+                            ).json()
+                            result.append({
+                                "name": name,
+                                "price": float(payload.get("lastPrice") or 0),
+                                "change_pct": float(payload.get("priceChangePercent") or 0),
+                            })
+                        try:
+                            payload = requests.get(
+                                "https://api.alternative.me/fng/",
+                                params={"limit": 1, "format": "json"},
+                                timeout=10,
+                            ).json()
+                            item = (payload.get("data") or [{}])[0]
+                            if item.get("value") is not None:
+                                result.append({
+                                    "name": "貪婪指數",
+                                    "price": float(item["value"]),
+                                    "change_pct": None,
+                                })
+                        except Exception as exc:
+                            logger.warning("fear greed index fetch failed: %s", exc)
+                        self._json({"indices": result})
+                        return
+
                     import yfinance as yf
                     if universe == "tw":
                         symbols = {"加權指數": "^TWII"}
@@ -785,6 +904,11 @@ class Handler(BaseHTTPRequestHandler):
                 period = params.get("period", ["6mo"])[0]
                 if period not in ("6mo", "1y", "2y", "5y", "10y", "max"):
                     period = "6mo"
+                with _lock:
+                    cached = _state["ohlcv"].get(ticker) if _state.get("universe") == "crypto" else None
+                if cached:
+                    self._json(cached)
+                    return
                 try:
                     import yfinance as yf
                     # 用 Ticker.history() 避免多線程下的 AttributeError bug
@@ -820,7 +944,7 @@ class Handler(BaseHTTPRequestHandler):
             elif route == "/api/live-refresh":
                 universe = params.get("universe", [_state["universe"]])[0]
                 if universe == "tw":
-                    self._json({"error": "live refresh is only available for US stocks"}, 400)
+                    self._json({"error": "live refresh is not available for Taiwan stocks"}, 400)
                     return
                 with _lock:
                     if _state["status"] != "done":
@@ -842,6 +966,8 @@ class Handler(BaseHTTPRequestHandler):
                         _state["scores"] = scores
                         _state["ohlcv"] = ohlcv
                         _state["universe"] = universe
+                        if universe == "crypto":
+                            _state["crypto_rs_scores"] = scores
                         _state["last_updated"] = datetime.now().strftime("%H:%M:%S")
                         _state["status"] = "done"
                         _state["progress"] = "即時行情完成"

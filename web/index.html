@@ -871,10 +871,26 @@ td.signal-cell {
 
 .rank-changed td {
   background-image: linear-gradient(90deg, rgba(0,212,170,0.08), transparent);
+  animation: rank-drawer-cell 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .rank-new {
   animation: rank-new-in 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes rank-drawer-cell {
+  0% {
+    clip-path: inset(0 100% 0 0);
+    background-color: rgba(0,212,170,0.10);
+  }
+  45% {
+    clip-path: inset(0 0 0 0);
+    background-color: rgba(0,212,170,0.14);
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    background-color: transparent;
+  }
 }
 
 @keyframes rank-new-in {
@@ -1144,6 +1160,7 @@ td.signal-cell {
     <div id="universe-tabs">
       <button class="tab active" data-u="all">美股</button>
       <button class="tab" data-u="tw">台股</button>
+      <button class="tab" data-u="crypto">加密貨幣</button>
     </div>
 
     <div id="market-indices"></div>
@@ -1192,6 +1209,10 @@ td.signal-cell {
         <div id="tw-strategy-tabs" style="display:none">
           <button class="tw-strategy-btn active" data-strategy="rs">RS排名</button>
           <button class="tw-strategy-btn" data-strategy="chips">籌碼加乘</button>
+          <button class="tw-strategy-btn" data-strategy="confluence">RS籌碼共振</button>
+        </div>
+        <div id="crypto-strategy-tabs" style="display:none">
+          <button class="tw-strategy-btn active" data-strategy="rs">RS排名</button>
         </div>
         <input id="filter-box" type="text" placeholder="搜尋代碼 / 名稱…" autocomplete="off" spellcheck="false">
         <div id="updated-label">—</div>
@@ -1399,9 +1420,39 @@ const TW_COLS = [
   { key:'tw_score',   label:'SCORE',     w:'90px',  align:'right',  cls:'score',       fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
 ];
 
+const CRYPTO_RS_COLS = [
+  { key:'rank',         label:'RANK',      w:'60px',  align:'center', cls:'rank-cell', fmt:v=>v??'—', sticky:true },
+  { key:'ticker',       label:'SYMBOL',    w:'110px', align:'left',   cls:'ticker-cell', fmt:v=>v||'—', sticky:true },
+  { key:'price',        label:'PRICE',     w:'110px', align:'right',  fmt:v=>v!=null?formatCryptoPrice(v):'—' },
+  { key:'day_return',   label:'24H%',      w:'76px',  align:'right',  cls:'pct', fmt:pct },
+  { key:'quote_volume', label:'成交額',    w:'110px', align:'right',  fmt:v=>v!=null?formatCompact(v):'—' },
+  { key:'q1_pct',       label:'0-3M',      w:'76px',  align:'right',  cls:'pct', fmt:pct },
+  { key:'q2_pct',       label:'3-6M',      w:'82px',  align:'right',  cls:'pct', fmt:pct },
+  { key:'q3_pct',       label:'6-9M',      w:'82px',  align:'right',  cls:'pct', fmt:pct },
+  { key:'q4_pct',       label:'9-12M',     w:'88px',  align:'right',  cls:'pct', fmt:pct },
+  { key:'rs_rating',    label:'RS排名',    w:'100px', align:'right',  cls:'score', fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
+];
+
 function pct(v) {
   if (v == null) return '—';
   return (Math.abs(v) * 100).toFixed(2) + '%';  // 無 +/-，顏色表示方向
+}
+
+function formatCompact(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return n.toFixed(0);
+}
+
+function formatCryptoPrice(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  if (n >= 100) return n.toFixed(2);
+  if (n >= 1) return n.toFixed(4);
+  return n.toPrecision(4);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1420,8 +1471,7 @@ const S = {
   strategyMode:    'rs',
   strategyLayers:  { technical: false, fundamental: false },
   twView:          'stock',   // 台股視圖：'stock' | 'breakout' | 'early'
-  twStrategy:      'rs',      // 台股主表策略（向後相容）
-  twChipsEnabled:  false,     // 籌碼加乘是否疊加
+  twStrategy:      'rs',      // 台股主表策略：'rs' | 'chips' | 'confluence'
   ema:             { 10: false, 20: false, 50: false, 120: false, 200: false },
 };
 
@@ -1439,9 +1489,11 @@ const STATIC_BASE = IS_STATIC
 /** 根據當前 universe 取對應靜態 JSON，並更新 S.scores */
 async function loadStaticScores() {
   const isTw = S.universe === 'tw';
-  const file  = isTw
-    ? (S.twStrategy === 'rs' ? 'tw_rs_scores.json' : 'tw_scores.json')
-    : 'us_scores.json';
+  const file = S.universe === 'crypto'
+    ? 'crypto_rs_scores.json'
+    : (isTw
+      ? (S.twStrategy === 'rs' ? 'tw_rs_scores.json' : 'tw_scores.json')
+      : 'us_scores.json');
   const r = await fetch(`${STATIC_BASE}/${file}`);
   const d = await r.json();
   S.scores = d.scores || [];
@@ -1472,6 +1524,7 @@ let emaSeries    = {};
 //  HELPERS
 // ══════════════════════════════════════════════════════════════
 function cols() {
+  if (S.universe === 'crypto') return CRYPTO_RS_COLS;
   if (S.universe === 'tw') {
     return S.twStrategy === 'chips' ? TW_COLS : TW_RS_COLS;
   }
@@ -1479,6 +1532,7 @@ function cols() {
   return S.strategyMode === 'rs' ? US_RS_COLS : US_COLS;
 }
 function scoreKey() {
+  if (S.universe === 'crypto') return 'rs_rating';
   if (S.universe === 'tw') {
     return S.twStrategy === 'chips' ? 'tw_score' : 'rs_score';
   }
@@ -2351,6 +2405,10 @@ async function loadScores(opts = {}) {
     if (S.twView === 'early')    { await renderTwEarlyStageView(); return; }
     if (S.twView === 'breakout') { await renderTwBreakoutView();   return; }
     await loadTwStrategy(S.twStrategy);
+  } else if (S.universe === 'crypto' && !opts.data) {
+    const url = IS_STATIC ? `${STATIC_BASE}/crypto_rs_scores.json` : '/api/crypto-rs-scores';
+    const d = await (await fetch(url)).json();
+    S.scores = d.scores || [];
   } else {
     const d = opts.data ?? await (async () => {
       const r = await fetch('/api/scores');
@@ -2383,19 +2441,22 @@ function startLiveRefresh() {
   stopLiveRefresh();
   if (S.universe === 'tw') return;
   if (IS_STATIC) return;   // 靜態模式無後端，停用 live refresh
-  liveTimer = setInterval(refreshLivePrices, 15 * 60 * 1000);   // 15 分鐘自動更新
+  const intervalMs = S.universe === 'crypto' ? 60 * 1000 : 15 * 60 * 1000;
+  liveTimer = setInterval(refreshLivePrices, intervalMs);
 }
 
 async function refreshLivePrices() {
   if (liveBusy || S.universe === 'tw') return;
   liveBusy = true;
-  setStatus('fetching', '即時更新中…');
+  const isCrypto = S.universe === 'crypto';
+  setStatus('fetching', isCrypto ? '加密貨幣更新中…' : '即時更新中…');
   try {
     const r = await fetch(`/api/live-refresh?universe=${S.universe}`);
     if (r.status === 409) return;
     if (!r.ok) throw new Error('live refresh failed');
     const data = await r.json();
     await loadScores({ data, animate: true, resetSort: false });
+    if (isCrypto) await fetchIndices();
     document.getElementById('updated-label').textContent = `更新：${data.last_updated}`;
     setStatus('done', `更新 ${data.last_updated}`);
     if (S.selectedTicker) {
@@ -2437,7 +2498,7 @@ async function bootstrapExistingScores() {
 // ══════════════════════════════════════════════════════════════
 // ── 大盤指數 ─────────────────────────────────────────────────────────────────
 async function fetchIndices() {
-  const universe = S.universe === 'tw' ? 'tw' : 'us';
+  const universe = S.universe === 'tw' ? 'tw' : (S.universe === 'crypto' ? 'crypto' : 'us');
   try {
     const r = await fetch(`/api/indices?universe=${universe}`);
     const d = await r.json();
@@ -2451,19 +2512,27 @@ function renderIndices(indices) {
   const el = document.getElementById('market-indices');
   if (!indices.length) { el.innerHTML = ''; return; }
   const isTw = S.universe === 'tw';
+  const isCrypto = S.universe === 'crypto';
   el.innerHTML = indices.map(idx => {
-    const isUp   = idx.change_pct >= 0;
+    const hasChange = Number.isFinite(idx.change_pct);
+    const isUp   = hasChange ? idx.change_pct >= 0 : true;
     // TW：紅漲綠跌；US：綠漲紅跌
     const upCol  = isTw ? 'var(--down)' : 'var(--up)';
     const dnCol  = isTw ? 'var(--up)'   : 'var(--down)';
     const col    = isUp ? upCol : dnCol;
     const sign   = isUp ? '+' : '';
-    const price  = idx.price >= 1000
+    const price  = !hasChange
+      ? Math.round(idx.price).toLocaleString('en-US')
+      : isCrypto
+        ? `$${formatCryptoPrice(idx.price)}`
+        : idx.price >= 1000
       ? idx.price.toLocaleString('en-US', {maximumFractionDigits: 0})
       : idx.price.toFixed(2);
     // 台股顯示絕對點數差，美股顯示百分比
     let chgDisplay;
-    if (isTw && idx.change != null) {
+    if (!hasChange) {
+      chgDisplay = '';
+    } else if (isTw && idx.change != null) {
       chgDisplay = Math.abs(idx.change) >= 10
         ? `${sign}${Math.round(idx.change).toLocaleString()}`
         : `${sign}${idx.change.toFixed(2)}`;
@@ -2473,7 +2542,7 @@ function renderIndices(indices) {
     return `<span class="idx-item">
       <span class="idx-name">${idx.name}</span>
       <span class="idx-price">${price}</span>
-      <span class="idx-chg" style="color:${col}">${chgDisplay}</span>
+      ${chgDisplay ? `<span class="idx-chg" style="color:${col}">${chgDisplay}</span>` : ''}
     </span>`;
   }).join('<span style="color:var(--border);padding:0 4px;font-size:10px">·</span>');
 }
@@ -2483,16 +2552,17 @@ let _currentView = 'stock'; // 'stock' | 'sector' | 'breakout'
 
 function updateStrategyTabs() {
   const isTw = S.universe === 'tw';
+  const isCrypto = S.universe === 'crypto';
   const isStock = _currentView === 'stock';
 
   // 美股分頁一：個股視角 / 板塊視角 / 突破觀察
   const viewToggle = document.getElementById('view-toggle');
-  if (viewToggle) viewToggle.style.display = !isTw ? 'flex' : 'none';
+  if (viewToggle) viewToggle.style.display = (!isTw && !isCrypto) ? 'flex' : 'none';
 
   // 美股分頁二：RS排名 / 技術面加乘 / 基本面加乘（只在個股視角顯示）
   const usStratTabs = document.getElementById('us-strategy-tabs');
   if (usStratTabs) {
-    usStratTabs.style.display = (!isTw && isStock) ? 'flex' : 'none';
+    usStratTabs.style.display = (!isTw && !isCrypto && isStock) ? 'flex' : 'none';
     // 更新美股策略 tab active 狀態
     usStratTabs.querySelectorAll('.strategy-btn').forEach(b => {
       const mode = b.dataset.strategy;
@@ -2514,18 +2584,22 @@ function updateStrategyTabs() {
     });
   }
 
-  // 台股 strategy tabs（RS排名 / 籌碼加乘）— 只在主表顯示
+  // 台股 strategy tabs（RS排名 / 籌碼加乘 / RS籌碼共振）
   const twStratTabs = document.getElementById('tw-strategy-tabs');
   if (twStratTabs) {
     twStratTabs.style.display = isTw ? 'flex' : 'none';
     const inObsView = isTw && S.twView !== 'stock';
     twStratTabs.querySelectorAll('.tw-strategy-btn').forEach(b => {
-      const isActive = !inObsView && (
-        b.dataset.strategy === 'rs' ||
-        (b.dataset.strategy === 'chips' && S.twChipsEnabled)
-      );
-      b.classList.toggle('active', isActive);
+      b.classList.toggle('active', !inObsView && b.dataset.strategy === S.twStrategy);
       b.disabled = inObsView;
+    });
+  }
+
+  const cryptoStratTabs = document.getElementById('crypto-strategy-tabs');
+  if (cryptoStratTabs) {
+    cryptoStratTabs.style.display = isCrypto ? 'flex' : 'none';
+    cryptoStratTabs.querySelectorAll('.tw-strategy-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.strategy === 'rs');
     });
   }
 }
@@ -2775,15 +2849,18 @@ document.querySelectorAll('.tab').forEach(btn => {
         // 美股：server 有任何 US 資料就載入
         // 台股：server 有 tw 資料就載入
         const hasData = st.status === 'done' && st.count > 0 &&
-          (newU === 'tw' ? serverU === 'tw' : serverU !== 'tw');
+          (newU === 'tw' ? serverU === 'tw' : (newU === 'crypto' ? serverU === 'crypto' : serverU !== 'tw' && serverU !== 'crypto'));
         if (hasData) {
           if (newU === 'tw') {
             await loadTwStrategy(S.twStrategy || 'rs');
+          } else if (newU === 'crypto') {
+            await loadScores({ resetSort: true });
           } else {
             await loadScores({ resetSort: true });
           }
           setStatus('done', `更新 ${st.last_updated}`);
           document.getElementById('updated-label').textContent = `更新：${st.last_updated}`;
+          startLiveRefresh();
         }
       } catch(_) {}
     })();
@@ -2878,39 +2955,35 @@ document.querySelectorAll('#tw-view-tabs .view-btn[data-twview]').forEach(btn =>
   });
 });
 
-// 台股策略 tab
-// RS排名：底層，始終啟用（不可取消）
-// 籌碼加乘：疊加過濾器，可 toggle
+// 台股策略 tab：三個互斥模式
 document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     if (btn.disabled) return;
-    const mode = btn.dataset.strategy;
-    if (mode === 'rs') return;  // RS排名 無法取消
-    // 籌碼加乘：toggle
-    S.twChipsEnabled = !S.twChipsEnabled;
-    document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(b => {
-      if (b.dataset.strategy === 'rs')    b.classList.add('active');
-      if (b.dataset.strategy === 'chips') b.classList.toggle('active', S.twChipsEnabled);
-    });
+    S.twStrategy = btn.dataset.strategy;
+    updateStrategyTabs();
     loadTwStrategyMulti();
   });
 });
 
-// 台股策略載入（支援 RS + 籌碼疊加）
+// 台股策略載入：RS排名 / 純籌碼前50 / RS籌碼共振
 async function loadTwStrategyMulti() {
   S.sortKey = null;
   let scores = [];
   try {
     const rsUrl = IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores';
-    const rsD = await (await fetch(rsUrl)).json();
-    scores = rsD.scores || [];
+    const chipsUrl = IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-scores';
 
-    if (S.twChipsEnabled && scores.length) {
-      // 籌碼加乘：取兩者交集（同時出現在籌碼排名中）
-      const chipsUrl = IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-scores';
+    if (S.twStrategy === 'chips') {
+      const chipsD = await (await fetch(chipsUrl)).json();
+      scores = chipsD.scores || [];
+    } else if (S.twStrategy === 'confluence') {
+      const rsD = await (await fetch(rsUrl)).json();
       const chipsD = await (await fetch(chipsUrl)).json();
       const chipsSet = new Set((chipsD.scores || []).map(r => r.ticker));
-      scores = scores.filter(r => chipsSet.has(r.ticker));
+      scores = (rsD.scores || []).filter(r => chipsSet.has(r.ticker));
+    } else {
+      const rsD = await (await fetch(rsUrl)).json();
+      scores = rsD.scores || [];
     }
   } catch(e) { console.warn('tw strategy fetch failed', e); }
   S.scores = scores;
@@ -2918,6 +2991,8 @@ async function loadTwStrategyMulti() {
 }
 
 async function loadTwStrategy(mode) {
+  if (mode) S.twStrategy = mode;
+  updateStrategyTabs();
   await loadTwStrategyMulti();
 }
 
