@@ -143,6 +143,26 @@ html, body {
   font-size: 12px;
 }
 
+/* 市場氣氛 */
+#market-sentiment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text1);
+  padding-left: 12px;
+}
+.sent-label { color: #ffffff; font-size: 12px; white-space: nowrap; }
+.sent-item  { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.sent-icon  { font-size: 14px; }
+.sent-fomo  { color: #4ade80; font-weight: 700; }   /* 狂熱：亮綠 */
+.sent-bull  { color: var(--up); font-weight: 600; }
+.sent-neu   { color: var(--text1); font-weight: 600; }
+.sent-bear  { color: var(--down); font-weight: 600; }
+.sent-fear  { color: #f87171; font-weight: 700; }   /* 恐慌：亮紅 */
+
 /* 大盤指數 */
 #market-indices {
   display: flex;
@@ -1164,6 +1184,7 @@ td.signal-cell {
     </div>
 
     <div id="market-indices"></div>
+    <div id="market-sentiment" style="display:none"></div>
 
     <div id="header-right">
       <div id="status-badge">
@@ -2503,9 +2524,40 @@ async function fetchIndices() {
     const r = await fetch(`/api/indices?universe=${universe}`);
     const d = await r.json();
     renderIndices(d.indices || []);
+    renderSentiment(d.sentiment || null, universe);
   } catch(e) {
     document.getElementById('market-indices').innerHTML = '';
+    document.getElementById('market-sentiment').style.display = 'none';
   }
+}
+
+function renderSentiment(sentiment, universe) {
+  const el = document.getElementById('market-sentiment');
+  if (!sentiment || universe !== 'us') { el.style.display = 'none'; return; }
+
+  function item(name, s) {
+    const map = {
+      '狂熱': { cls: 'sent-fomo', icon: '🥵' },
+      '偏多': { cls: 'sent-bull', icon: '😊' },
+      '中性': { cls: 'sent-neu',  icon: '😐' },
+      '偏空': { cls: 'sent-bear', icon: '😟' },
+      '恐慌': { cls: 'sent-fear', icon: '🥶' },
+    };
+    const { cls, icon } = map[s.label] || map['中性'];
+    return `<span class="sent-item">
+      <span class="sent-icon">${icon}</span>
+      <span class="${cls}">${name}${s.label}</span>
+    </span>`;
+  }
+
+  el.style.display = 'flex';
+  el.innerHTML = `
+    <span class="sent-label">美股氣圍</span>
+    <span style="color:var(--border)">|</span>
+    ${item('道瓊', sentiment.dow)}
+    <span style="color:var(--border)">|</span>
+    ${item('納指', sentiment.nasdaq)}
+  `;
 }
 
 function renderIndices(indices) {

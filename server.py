@@ -383,6 +383,109 @@ def _fetch_fund_dict(tickers: list, sector_ema_by_etf=None) -> dict:
     return result
 
 
+def _compute_us_sentiment() -> dict:
+    """
+    美股市場氣氛值（0-100）：
+      廣度訊號 45%  — _state["scores"] 中 p_60ma > 1.0 的比例
+      VIX 訊號  45%  — ^VIX 當前值 + 與 20MA 的關係
+      動能訊號  10%  — ^DJI / ^NDX 相對 MA20/50/200 的位置
+
+    Returns:
+      { "dow":    { "score": int, "label": "偏多"|"中性"|"偏空" },
+        "nasdaq": { "score": int, "label": ... } }
+    """
+    import yfinance as yf
+    import numpy as np
+
+    # ── 廣度 (0-45) ─────────────────────────────────────────────────────────────
+    with _lock:
+        scores = list(_state.get("scores", []))
+
+    if scores:
+        above = sum(1 for r in scores if (r.get("p_60ma") or 0) > 1.0)
+        breadth_pct = above / len(scores)          # 0.0 ~ 1.0
+        # 非線性映射：< 30% → 低分  50% → 20  > 70% → 40
+        if breadth_pct >= 0.70:
+            breadth_score = 40.0
+        elif breadth_pct >= 0.30:
+            breadth_score = (breadth_pct - 0.30) / 0.40 * 40.0
+        else:
+            breadth_score = 0.0
+    else:
+        breadth_score = 20.0  # 無資料時中性
+
+    # ── VIX (0-45) ──────────────────────────────────────────────────────────────
+    vix_score = 12.5  # default 中性
+    try:
+        vix_df = yf.Ticker("^VIX").history(period="2mo", auto_adjust=True, raise_errors=False)
+        if vix_df is not None and len(vix_df) >= 2:
+            vix_now = float(vix_df["Close"].iloc[-1])
+            vix_ma20 = float(vix_df["Close"].tail(20).mean())
+
+            # 絕對值分數（0-22）
+            if vix_now < 15:
+                base = 22.0
+            elif vix_now < 18:
+                base = 17.0
+            elif vix_now < 20:
+                base = 12.0
+            elif vix_now < 25:
+                base = 7.0
+            elif vix_now < 30:
+                base = 3.0
+            else:
+                base = 0.0
+
+            # 趨勢加減分（±3）
+            trend = 3.0 if vix_now < vix_ma20 else (-3.0 if vix_now > vix_ma20 * 1.2 else 0.0)
+            vix_score = float(np.clip(base + trend, 0, 25))
+    except Exception as exc:
+        logger.debug("VIX fetch failed: %s", exc)
+
+    # ── 動能 (0-10) 各指數獨立 ──────────────────────────────────────────────────
+    def _momentum(symbol: str) -> float:
+        try:
+            df = yf.Ticker(symbol).history(period="1y", auto_adjust=True, raise_errors=False)
+            if df is None or len(df) < 20:
+                return 17.5
+            close = df["Close"]
+            price  = float(close.iloc[-1])
+            ma10   = float(close.tail(10).mean())
+            ma20   = float(close.tail(20).mean())
+            ma50   = float(close.tail(50).mean())  if len(close) >= 50  else ma20
+            ma100  = float(close.tail(100).mean()) if len(close) >= 100 else ma50
+            score  = 0.0
+            # 近期均線權重較高（反映短期靈敏度）
+            if price > ma10:  score += 11.0
+            if price > ma20:  score += 10.0
+            if price > ma50:  score +=  8.0
+            if price > ma100: score +=  6.0
+            return score          # 0 ~ 35
+        except Exception:
+            return 17.5
+
+    dow_mom    = _momentum("^DJI")
+    nasdaq_mom = _momentum("^NDX")
+
+    # ── 合成 ────────────────────────────────────────────────────────────────────
+    def _make(mom: float) -> dict:
+        score = int(round(breadth_score + vix_score + mom))
+        score = max(0, min(100, score))
+        if score >= 80:
+            label = "狂熱"
+        elif score >= 60:
+            label = "偏多"
+        elif score >= 40:
+            label = "中性"
+        elif score >= 20:
+            label = "偏空"
+        else:
+            label = "恐慌"
+        return {"score": score, "label": label, "bullish": score >= 60}
+
+    return {"dow": _make(dow_mom), "nasdaq": _make(nasdaq_mom)}
+
+
 def _compute_sector_metrics(scores_df) -> object:
     """
     板塊雙層結構：
@@ -894,7 +997,14 @@ class Handler(BaseHTTPRequestHandler):
                             chg_pct = chg / prev * 100 if prev else 0.0
                             result.append({"name": name, "price": last,
                                            "change": chg, "change_pct": chg_pct})
-                    self._json({"indices": result})
+                    payload = {"indices": result}
+                    # 美股額外計算市場氣氛值
+                    if universe == "us":
+                        try:
+                            payload["sentiment"] = _compute_us_sentiment()
+                        except Exception as exc:
+                            logger.debug("sentiment compute failed: %s", exc)
+                    self._json(payload)
                 except Exception as exc:
                     logger.warning("indices fetch failed: %s", exc)
                     self._json({"indices": []})
