@@ -434,7 +434,6 @@ html, body {
 
 #scores-table {
   width: 100%;
-  min-width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -1639,7 +1638,12 @@ function renderHead() {
   };
   const tableMinWidth = tableCols.reduce((sum, col, idx) => sum + colWidth(col, idx), 0);
   const table = document.getElementById('scores-table');
-  if (table) table.style.minWidth = `${tableMinWidth}px`;
+  if (table) {
+    // width:100% 讓表格在寬螢幕填滿容器；
+    // min-width 確保窄螢幕時欄位不被壓縮，overflow-x:auto 觸發橫向捲軸。
+    table.style.width    = '100%';
+    table.style.minWidth = `${tableMinWidth}px`;
+  }
 
   // Pre-compute sticky left offsets synchronously from saved/default widths
   _stickyMap = {};
@@ -2460,24 +2464,22 @@ function stopLiveRefresh() {
 
 function startLiveRefresh() {
   stopLiveRefresh();
-  if (S.universe === 'tw') return;
-  if (IS_STATIC) return;   // 靜態模式無後端，停用 live refresh
-  const intervalMs = S.universe === 'crypto' ? 60 * 1000 : 15 * 60 * 1000;
+  if (S.universe === 'tw' || S.universe === 'crypto') return;  // 這兩個用 SSE
+  if (IS_STATIC) return;
+  const intervalMs = 15 * 60 * 1000;  // 美股 15 分鐘
   liveTimer = setInterval(refreshLivePrices, intervalMs);
 }
 
 async function refreshLivePrices() {
-  if (liveBusy || S.universe === 'tw') return;
+  if (liveBusy || S.universe === 'tw' || S.universe === 'crypto') return;
   liveBusy = true;
-  const isCrypto = S.universe === 'crypto';
-  setStatus('fetching', isCrypto ? '加密貨幣更新中…' : '即時更新中…');
+  setStatus('fetching', '即時更新中…');
   try {
     const r = await fetch(`/api/live-refresh?universe=${S.universe}`);
     if (r.status === 409) return;
     if (!r.ok) throw new Error('live refresh failed');
     const data = await r.json();
     await loadScores({ data, animate: true, resetSort: false });
-    if (isCrypto) await fetchIndices();
     document.getElementById('updated-label').textContent = `更新：${data.last_updated}`;
     setStatus('done', `更新 ${data.last_updated}`);
     if (S.selectedTicker) {
@@ -2492,6 +2494,74 @@ async function refreshLivePrices() {
     liveBusy = false;
   }
 }
+
+// ── 加密貨幣 SSE 串流管理器 ──────────────────────────────────────
+const _cryptoSSE = {
+  _es: null,
+  _recoTimer: null,
+  _active: false,
+  _lastScoreTime: 0,   // 最後一次有 scores 的時間戳
+
+  start() {
+    this.stop();
+    this._active = true;
+    this._connect();
+  },
+
+  _connect() {
+    if (!this._active) return;
+    if (this._es) { this._es.close(); this._es = null; }
+
+    this._es = new EventSource('/api/stream/crypto');
+
+    this._es.onmessage = async (e) => {
+      if (S.universe !== 'crypto') return;
+      try {
+        const d = JSON.parse(e.data);
+
+        // ① 更新 header 指數
+        if (d.indices?.length) renderIndices(d.indices);
+
+        // ② 更新列表（有 scores 且非空）
+        if (d.scores?.length) {
+          this._lastScoreTime = Date.now();
+          // 用新資料更新 S.scores，保留排序/篩選狀態；animate:true → FLIP 排名移動動畫
+          S.scores = d.scores;
+          renderBody({ animate: true });
+
+          // 同步更新已展開個股的即時價格
+          if (S.selectedTicker) {
+            const row = S.scores.find(r => r.ticker === S.selectedTicker);
+            if (row) {
+              document.getElementById('chart-live-price').innerHTML =
+                `<span style="color:${row.day_return >= 0 ? 'var(--up)' : 'var(--down)'};\
+font-family:var(--mono);font-size:12px;">${row.price.toFixed(4)} (${pct(row.day_return)})</span>`;
+            }
+          }
+
+          // 更新最後更新時間
+          const now = new Date();
+          const hms = now.toTimeString().slice(0, 8);
+          document.getElementById('updated-label').textContent = `更新：${hms}`;
+          setStatus('done', `更新 ${hms}`);
+        }
+      } catch (_) {}
+    };
+
+    this._es.onerror = () => {
+      if (!this._active) return;
+      if (this._es) { this._es.close(); this._es = null; }
+      clearTimeout(this._recoTimer);
+      this._recoTimer = setTimeout(() => this._connect(), 8000);
+    };
+  },
+
+  stop() {
+    this._active = false;
+    if (this._es) { this._es.close(); this._es = null; }
+    if (this._recoTimer) { clearTimeout(this._recoTimer); this._recoTimer = null; }
+  },
+};
 
 async function bootstrapExistingScores() {
   updateStrategyTabs();
@@ -2518,8 +2588,89 @@ async function bootstrapExistingScores() {
 //  EVENT WIRING
 // ══════════════════════════════════════════════════════════════
 // ── 大盤指數 ─────────────────────────────────────────────────────────────────
+
+// SSE 串流管理器（台股即時指數）
+const _indicesSSE = {
+  _es: null,           // EventSource instance
+  _sentTimer: null,    // 氣氛值定時刷新（sentiment 不走 SSE，避免每次重算）
+  _recoTimer: null,    // SSE 斷線自動重連計時器
+  _sentUniverse: null,
+  _active: false,
+
+  start(universe) {
+    this.stop();
+    if (universe !== 'tw') return;   // 只有台股用 SSE
+
+    this._active = true;
+    this._sentUniverse = universe;
+    this._connect();
+
+    // 氣氛值每 30 秒另行拉取（避免每 5 秒重算拖慢）
+    this._refreshSentiment();
+    this._sentTimer = setInterval(() => this._refreshSentiment(), 30000);
+  },
+
+  _connect() {
+    if (!this._active) return;
+    if (this._es) { this._es.close(); this._es = null; }
+
+    this._es = new EventSource('/api/stream/tw-indices');
+
+    this._es.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        if (d.indices) renderIndices(d.indices);
+      } catch (_) {}
+    };
+
+    this._es.onerror = () => {
+      if (!this._active) return;
+      // 斷線後 6 秒重連（瀏覽器也有原生 3 秒重試，但我們自己管控更清晰）
+      if (this._es) { this._es.close(); this._es = null; }
+      clearTimeout(this._recoTimer);
+      this._recoTimer = setTimeout(() => this._connect(), 6000);
+    };
+  },
+
+  stop() {
+    this._active = false;
+    if (this._es) { this._es.close(); this._es = null; }
+    if (this._sentTimer) { clearInterval(this._sentTimer);   this._sentTimer = null; }
+    if (this._recoTimer) { clearTimeout(this._recoTimer);    this._recoTimer = null; }
+    this._sentUniverse = null;
+  },
+
+  async _refreshSentiment() {
+    const universe = this._sentUniverse;
+    if (!universe) return;
+    try {
+      const r = await fetch(`/api/indices?universe=${universe}`);
+      const d = await r.json();
+      renderSentiment(d.sentiment || null, universe);
+      // 若 SSE 連線還沒就緒，順便用 REST 資料更新一次指數
+      const esReady = this._es && this._es.readyState === EventSource.OPEN;
+      if (!esReady) renderIndices(d.indices || []);
+    } catch (_) {}
+  },
+};
+
 async function fetchIndices() {
   const universe = S.universe === 'tw' ? 'tw' : (S.universe === 'crypto' ? 'crypto' : 'us');
+
+  if (universe === 'tw') {
+    // 台股：啟動 SSE 串流（5 秒推一次）
+    _indicesSSE.start('tw');
+    return;
+  }
+
+  if (universe === 'crypto') {
+    // 加密貨幣：啟動 SSE 串流（10 秒推一次）；氛圍區塊對 crypto 無意義，隱藏
+    document.getElementById('market-sentiment').style.display = 'none';
+    _cryptoSSE.start();
+    return;
+  }
+
+  // 美股：一次性 REST 抓取（不需要高頻更新）
   try {
     const r = await fetch(`/api/indices?universe=${universe}`);
     const d = await r.json();
@@ -2533,17 +2684,18 @@ async function fetchIndices() {
 
 function renderSentiment(sentiment, universe) {
   const el = document.getElementById('market-sentiment');
-  if (!sentiment || universe !== 'us') { el.style.display = 'none'; return; }
+  if (!sentiment) { el.style.display = 'none'; return; }
+
+  const labelMap = {
+    '狂熱': { cls: 'sent-fomo', icon: '🥵' },
+    '偏多': { cls: 'sent-bull', icon: '😊' },
+    '中性': { cls: 'sent-neu',  icon: '😐' },
+    '偏空': { cls: 'sent-bear', icon: '🫪' },
+    '恐慌': { cls: 'sent-fear', icon: '🥶' },
+  };
 
   function item(name, s) {
-    const map = {
-      '狂熱': { cls: 'sent-fomo', icon: '🥵' },
-      '偏多': { cls: 'sent-bull', icon: '😊' },
-      '中性': { cls: 'sent-neu',  icon: '😐' },
-      '偏空': { cls: 'sent-bear', icon: '😟' },
-      '恐慌': { cls: 'sent-fear', icon: '🥶' },
-    };
-    const { cls, icon } = map[s.label] || map['中性'];
+    const { cls, icon } = labelMap[s.label] || labelMap['中性'];
     return `<span class="sent-item">
       <span class="sent-icon">${icon}</span>
       <span class="${cls}">${name}${s.label}</span>
@@ -2551,13 +2703,26 @@ function renderSentiment(sentiment, universe) {
   }
 
   el.style.display = 'flex';
-  el.innerHTML = `
-    <span class="sent-label">美股氣圍</span>
-    <span style="color:var(--border)">|</span>
-    ${item('道瓊', sentiment.dow)}
-    <span style="color:var(--border)">|</span>
-    ${item('納指', sentiment.nasdaq)}
-  `;
+
+  if (universe === 'tw') {
+    el.innerHTML = `
+      <span class="sent-label">台股氣圍</span>
+      <span style="color:var(--border)">|</span>
+      ${item('大盤', sentiment.market)}
+      <span style="color:var(--border)">|</span>
+      ${item('櫃買', sentiment.otc)}
+    `;
+  } else {
+    el.innerHTML = `
+      <span class="sent-label">美股氣圍</span>
+      <span style="color:var(--border)">|</span>
+      ${item('道瓊', sentiment.dow)}
+      <span style="color:var(--border)">|</span>
+      ${item('納指', sentiment.nasdaq)}
+      <span style="color:var(--border)">|</span>
+      ${item('標普', sentiment.sp500 || sentiment.nasdaq)}
+    `;
+  }
 }
 
 function renderIndices(indices) {
@@ -2568,9 +2733,11 @@ function renderIndices(indices) {
   el.innerHTML = indices.map(idx => {
     const hasChange = Number.isFinite(idx.change_pct);
     const isUp   = hasChange ? idx.change_pct >= 0 : true;
-    // TW：紅漲綠跌；US：綠漲紅跌
-    const upCol  = isTw ? 'var(--down)' : 'var(--up)';
-    const dnCol  = isTw ? 'var(--up)'   : 'var(--down)';
+    // 恐慌指數（VIX）漲跌方向反向顯示：VIX 漲 = 紅，VIX 跌 = 綠
+    const isFear = idx.name === '恐慌指數';
+    // TW：紅漲綠跌；US：綠漲紅跌；恐慌指數：漲紅跌綠（跨市場通用）
+    const upCol  = isFear ? 'var(--down)' : isTw ? 'var(--down)' : 'var(--up)';
+    const dnCol  = isFear ? 'var(--up)'   : isTw ? 'var(--up)'   : 'var(--down)';
     const col    = isUp ? upCol : dnCol;
     const sign   = isUp ? '+' : '';
     const price  = !hasChange
@@ -2591,8 +2758,11 @@ function renderIndices(indices) {
     } else {
       chgDisplay = `${sign}${idx.change_pct.toFixed(2)}%`;
     }
+    const sessionBadge = idx.session === '夜盤'
+      ? `<span style="font-size:9px;color:var(--text-dim);margin-left:2px">夜</span>`
+      : '';
     return `<span class="idx-item">
-      <span class="idx-name">${idx.name}</span>
+      <span class="idx-name">${idx.name}${sessionBadge}</span>
       <span class="idx-price">${price}</span>
       ${chgDisplay ? `<span class="idx-chg" style="color:${col}">${chgDisplay}</span>` : ''}
     </span>`;
@@ -2875,6 +3045,8 @@ function toggleSectorDrill(tr, sector) {
 document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => {
     stopLiveRefresh();
+    _indicesSSE.stop();   // 離開台股時關閉 TW SSE
+    _cryptoSSE.stop();    // 離開加密貨幣時關閉 crypto SSE
     document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     S.universe = btn.dataset.u;
