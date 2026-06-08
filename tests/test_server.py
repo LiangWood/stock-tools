@@ -163,3 +163,68 @@ def test_refresh_live_scores_rejects_empty_cache():
 
     with pytest.raises(ValueError, match="no cached scores"):
         server._refresh_live_scores("all")
+
+
+def test_tw_sentiment_components_reward_broad_participation_and_flow():
+    rows = [
+        {
+            "ticker": f"100{i}.TW",
+            "ret_20d": 0.05,
+            "day_return": 0.01,
+            "turnover_10k": 1000,
+            "amount_ratio": 1.4,
+        }
+        for i in range(8)
+    ] + [
+        {
+            "ticker": f"200{i}.TW",
+            "ret_20d": -0.03,
+            "day_return": -0.01,
+            "turnover_10k": 200,
+            "amount_ratio": 0.8,
+        }
+        for i in range(2)
+    ]
+    ohlcv = {
+        r["ticker"]: {"close": list(range(80, 141))}
+        for r in rows
+    }
+
+    breadth = server._compute_breadth_component(rows, ohlcv)
+    flow = server._compute_flow_component(rows)
+
+    assert breadth > 80
+    assert flow > 75
+
+
+def test_tw_sentiment_components_penalize_weak_breadth_and_rising_volatility():
+    rows = [
+        {
+            "ticker": f"300{i}.TW",
+            "ret_20d": -0.05,
+            "day_return": -0.02,
+            "turnover_10k": 1000,
+            "amount_ratio": 0.7,
+        }
+        for i in range(10)
+    ]
+    ohlcv = {
+        r["ticker"]: {"close": list(range(140, 79, -1))}
+        for r in rows
+    }
+
+    breadth = server._compute_breadth_component(rows, ohlcv)
+    flow = server._compute_flow_component(rows)
+    volatility = server._compute_volatility_component(30, 18)
+
+    assert breadth < 20
+    assert flow < 20
+    assert volatility < 15
+
+
+def test_tw_index_momentum_component_uses_trend_not_only_one_day_move():
+    rising = [100 + i for i in range(130)]
+    falling = [230 - i for i in range(130)]
+
+    assert server._compute_index_momentum_component(rising, today_chg_pct=-0.5) > 75
+    assert server._compute_index_momentum_component(falling, today_chg_pct=1.5) < 35

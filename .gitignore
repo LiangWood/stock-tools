@@ -34,3 +34,4 @@ data/tickers_cache.json
 
 # Logs
 *.log
+.vercel

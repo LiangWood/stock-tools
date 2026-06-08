@@ -1,7 +1,12 @@
 import pandas as pd
 import numpy as np
 import pytest
-from scoring.tw_engine import compute_tw_breakout_candidates, compute_tw_rs_scores, compute_tw_scores
+from scoring.tw_engine import (
+    compute_tw_breakout_candidates,
+    compute_tw_rs_scores,
+    compute_tw_scores,
+    compute_tw_sector_rotation,
+)
 
 _N = 130
 
@@ -200,3 +205,40 @@ def test_fewer_than_20_stocks():
     data = {f"T{i}.TW": _make_stock() for i in range(5)}
     result = compute_tw_scores(data)
     assert len(result) == 5
+
+
+def test_tw_sector_rotation_scores_main_sector_above_exiting_sector():
+    data = {
+        "2317.TW": _make_stock(price=100, fi_net=1_000_000, it_net=1_000_000),
+        "6669.TW": _make_stock(price=100, fi_net=1_000_000, it_net=1_000_000),
+        "2603.TW": _make_stock(price=100, fi_net=-1_000_000, it_net=-1_000_000),
+        "2609.TW": _make_stock(price=100, fi_net=-1_000_000, it_net=-1_000_000),
+    }
+    history = {
+        "2317": [{"date": f"2026-05-{i:02d}", "fi_net": i * 100_000, "it_net": i * 100_000} for i in range(1, 11)],
+        "6669": [{"date": f"2026-05-{i:02d}", "fi_net": i * 80_000, "it_net": i * 80_000} for i in range(1, 11)],
+        "2603": [{"date": f"2026-05-{i:02d}", "fi_net": -i * 100_000, "it_net": -i * 100_000} for i in range(1, 11)],
+        "2609": [{"date": f"2026-05-{i:02d}", "fi_net": -i * 80_000, "it_net": -i * 80_000} for i in range(1, 11)],
+    }
+
+    result = compute_tw_sector_rotation(data, history=history)
+
+    assert result["AI伺服器"]["sector_flow_status"] == "主力"
+    assert result["航運"]["sector_flow_status"] == "退潮"
+    assert result["AI伺服器"]["sector_flow_score"] > result["航運"]["sector_flow_score"]
+    assert result["AI伺服器"]["sector_net_1d_yi"] > 0
+    assert result["AI伺服器"]["stocks"][0]["stock_id"] in {"2317", "6669"}
+    assert "net_1d_yi" in result["AI伺服器"]["stocks"][0]
+
+
+def test_tw_scores_include_sector_flow_columns():
+    data = {
+        "2317.TW": _make_stock(fi_net=5_000_000, it_net=3_000_000, margin_chg=-500),
+        "BASE.TW": _make_stock(fi_net=100, it_net=100, margin_chg=500),
+    }
+
+    result = compute_tw_scores(data)
+
+    for col in ["sector_theme", "sector_flow_status", "sector_flow_score", "sector_net_1d_yi", "sector_ret_5d"]:
+        assert col in result.columns
+    assert result[result["ticker"] == "2317.TW"]["sector_theme"].iloc[0] == "AI伺服器"

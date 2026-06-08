@@ -14,8 +14,37 @@ import pandas as pd
 
 from scoring.engine import calculate_rsi, _linear_slope, _breakout_score
 from scoring.screener import apply_hard_filters, compute_scores, generate_reason, load_config
+from data.chips_cache import load_chips_history
 
 _CONFIG_PATH = Path(__file__).parent / "config.json"
+_SECTOR_FLOW_WEIGHT = 0.15
+
+_TW_SECTOR_GROUPS = {
+    "AI伺服器": ["2317", "6669", "2376", "2382", "3231", "4938", "2356", "3706", "2353", "3017", "8050", "7711"],
+    "散熱": ["3324", "3017", "8261", "6276", "2421", "6230", "3653", "3338"],
+    "PCB載板": ["3037", "8046", "3189", "6213", "3149", "8213", "2367", "3044", "6201", "6155", "6141", "6224", "3294", "3021"],
+    "半導體設備": ["3680", "3131", "8027", "3563", "6191", "4749", "6196", "6139", "6223", "3413"],
+    "晶圓代工": ["2330", "2303", "5347", "6770", "3707", "3035", "6515"],
+    "封測": ["3711", "2449", "6147", "8150", "3680", "2369", "2329", "6271", "6435", "6205"],
+    "記憶體": ["2408", "5269", "5388", "2344", "3260", "2451", "3661", "9102", "5289", "4967", "8271", "8299"],
+    "高速光通訊": ["3081", "4979", "8121", "4906", "6177", "3450", "6243", "6588", "6207"],
+    "IC設計": ["2454", "2379", "3034", "3014", "3443", "6533", "3035", "5269", "5274", "3529"],
+    "被動元件": ["2327", "2492", "2375", "2438", "6112", "2456", "3533", "6147", "6285", "3094"],
+    "電源儲能": ["2308", "6412", "3015", "3017", "3211", "1519", "6431", "4931", "5227", "6121"],
+    "電器電纜": ["1604", "1605", "1614", "1503", "1519", "1513", "1612", "1609"],
+    "連接器": ["2392", "3533", "6177", "3023", "2313", "3030", "6271", "5383", "6422"],
+    "面板": ["2409", "3481", "6116", "3149", "3504", "2406", "3009", "8069"],
+    "金融": ["2881", "2882", "2891", "2880", "2884", "2885", "2886", "2887", "2890", "2892", "5880", "5876"],
+    "航運": ["2603", "2609", "2615", "2637", "2605", "2618", "2606", "5608", "2617", "2208"],
+    "工業自動化": ["2049", "4526", "3563", "1597", "2059", "3017", "1589", "1590", "2395"],
+    "太陽能風電": ["6443", "3576", "3691", "5227", "6806", "1519", "1503", "6753", "9958"],
+}
+
+_STOCK_TO_SECTOR = {
+    code: sector
+    for sector, codes in _TW_SECTOR_GROUPS.items()
+    for code in codes
+}
 
 
 def _ema(series: pd.Series, span: int) -> pd.Series:
@@ -177,6 +206,142 @@ def _tech_metrics(ohlcv: pd.DataFrame | None) -> dict:
         "rsi_divergence": rsi_div,
         "breakout_score": brk,
     }
+
+
+def _percentile_scores(values: dict[str, float]) -> dict[str, float]:
+    if not values:
+        return {}
+    s = pd.Series(values, dtype=float)
+    return (s.rank(pct=True, na_option="bottom") * 100).to_dict()
+
+
+def _sector_flow_status(net_5d_yi: float, accel_yi: float) -> str:
+    if net_5d_yi > 0 and accel_yi > 0:
+        return "主力"
+    if net_5d_yi > 0 and accel_yi <= 0:
+        return "輪動"
+    if net_5d_yi <= 0 and net_5d_yi > -0.5:
+        return "觀望"
+    return "退潮"
+
+
+def compute_tw_sector_rotation(ticker_data: dict, history: dict | None = None) -> dict:
+    """
+    板塊資金輪動分數。
+
+    X 軸概念：近 5 日法人資金淨流入。
+    Y 軸概念：近 5 日平均流入速度 - 前 5 日平均流入速度。
+    泡泡大小概念：近 20 日法人累計資金。
+    """
+    history = history if history is not None else load_chips_history()
+    sector_daily: dict[str, dict[str, float]] = {}
+    sector_stocks: dict[str, list[dict]] = {}
+
+    for ticker, d in ticker_data.items():
+        if not d:
+            continue
+        code = ticker.split(".")[0]
+        sector = _STOCK_TO_SECTOR.get(code)
+        if not sector:
+            continue
+        price = float(d.get("price") or 0.0)
+        if price <= 0:
+            continue
+        today_net_shares = float(d.get("fi_net", 0.0) or 0.0) + float(d.get("it_net", 0.0) or 0.0)
+        today_net_yi = today_net_shares * price / 1e8
+        day_return = d.get("day_return")
+        ret_5d = None
+        ohlcv = d.get("ohlcv")
+        if ohlcv is not None and not ohlcv.empty and "Close" in ohlcv:
+            close = ohlcv["Close"].dropna()
+            if len(close) >= 6 and float(close.iloc[-6]) > 0:
+                ret_5d = float((close.iloc[-1] - close.iloc[-6]) / close.iloc[-6])
+        sector_stocks.setdefault(sector, []).append({
+            "ticker": ticker,
+            "stock_id": code,
+            "name": d.get("name", ""),
+            "price": price,
+            "day_return": float(day_return) if day_return is not None else None,
+            "ret_5d": ret_5d,
+            "net_1d_yi": today_net_yi,
+            "fi_net": float(d.get("fi_net", 0.0) or 0.0),
+            "it_net": float(d.get("it_net", 0.0) or 0.0),
+        })
+        records = history.get(code) or []
+        if not records:
+            records = [{
+                "date": "_today",
+                "fi_net": d.get("fi_net", 0.0),
+                "it_net": d.get("it_net", 0.0),
+            }]
+        for record in records[-20:]:
+            date = str(record.get("date", ""))
+            net_shares = float(record.get("fi_net", 0.0) or 0.0) + float(record.get("it_net", 0.0) or 0.0)
+            net_yi = net_shares * price / 1e8
+            sector_daily.setdefault(sector, {})
+            sector_daily[sector][date] = sector_daily[sector].get(date, 0.0) + net_yi
+
+    raw = {}
+    for sector, by_date in sector_daily.items():
+        values = [v for _, v in sorted(by_date.items())][-20:]
+        if not values:
+            continue
+        last5 = values[-5:]
+        prev5 = values[-10:-5]
+        net_5d_yi = float(sum(last5))
+        net_20d_yi = float(sum(values))
+        accel_yi = float(sum(last5) / max(len(last5), 1) - (sum(prev5) / len(prev5) if prev5 else 0.0))
+        stocks = sorted(sector_stocks.get(sector, []), key=lambda s: s.get("net_1d_yi") or 0.0, reverse=True)
+        ret_5d_values = [s["ret_5d"] for s in stocks if s.get("ret_5d") is not None]
+        raw[sector] = {
+            "sector_theme": sector,
+            "sector_flow_status": _sector_flow_status(net_5d_yi, accel_yi),
+            "sector_net_1d_yi": float(sum(s.get("net_1d_yi") or 0.0 for s in stocks)),
+            "sector_net_5d_yi": net_5d_yi,
+            "sector_net_20d_yi": net_20d_yi,
+            "sector_accel_yi": accel_yi,
+            "sector_ret_5d": float(np.mean(ret_5d_values)) if ret_5d_values else None,
+            "stocks": stocks,
+        }
+
+    if not raw:
+        return {}
+
+    net5_rank = _percentile_scores({k: v["sector_net_5d_yi"] for k, v in raw.items()})
+    net20_rank = _percentile_scores({k: v["sector_net_20d_yi"] for k, v in raw.items()})
+    accel_rank = _percentile_scores({k: v["sector_accel_yi"] for k, v in raw.items()})
+    status_base = {"主力": 90.0, "輪動": 72.0, "觀望": 52.0, "退潮": 25.0}
+
+    for sector, row in raw.items():
+        flow_score = (
+            status_base[row["sector_flow_status"]] * 0.35 +
+            net5_rank.get(sector, 50.0) * 0.30 +
+            accel_rank.get(sector, 50.0) * 0.25 +
+            net20_rank.get(sector, 50.0) * 0.10
+        )
+        row["sector_flow_score"] = round(float(np.clip(flow_score, 0, 100)), 1)
+    return raw
+
+
+def _attach_sector_rotation(df: pd.DataFrame, ticker_data: dict) -> pd.DataFrame:
+    sector_stats = compute_tw_sector_rotation(ticker_data)
+    df = df.copy()
+
+    def _sector(code: str) -> str | None:
+        return _STOCK_TO_SECTOR.get(str(code).split(".")[0])
+
+    df["sector_theme"] = df["ticker"].map(_sector)
+    df["sector_flow_status"] = df["sector_theme"].map(lambda s: sector_stats.get(s, {}).get("sector_flow_status") if s else None)
+    df["sector_flow_score"] = df["sector_theme"].map(lambda s: sector_stats.get(s, {}).get("sector_flow_score") if s else None)
+    df["sector_net_1d_yi"] = df["sector_theme"].map(lambda s: sector_stats.get(s, {}).get("sector_net_1d_yi") if s else None)
+    df["sector_net_5d_yi"] = df["sector_theme"].map(lambda s: sector_stats.get(s, {}).get("sector_net_5d_yi") if s else None)
+    df["sector_net_20d_yi"] = df["sector_theme"].map(lambda s: sector_stats.get(s, {}).get("sector_net_20d_yi") if s else None)
+    df["sector_accel_yi"] = df["sector_theme"].map(lambda s: sector_stats.get(s, {}).get("sector_accel_yi") if s else None)
+    df["sector_ret_5d"] = df["sector_theme"].map(lambda s: sector_stats.get(s, {}).get("sector_ret_5d") if s else None)
+    df["sector_theme"] = df["sector_theme"].fillna("未分類")
+    df["sector_flow_status"] = df["sector_flow_status"].fillna("未分類")
+    df["sector_flow_score"] = df["sector_flow_score"].fillna(50.0)
+    return df
 
 
 def compute_tw_rs_scores(ticker_data: dict) -> pd.DataFrame:
@@ -460,6 +625,11 @@ def compute_tw_scores(ticker_data: dict) -> pd.DataFrame:
 
     # ── Layer 2：加權評分 ────────────────────────────────────────────
     df_scored = compute_scores(df_filtered, config["scoring"])
+    df_scored = _attach_sector_rotation(df_scored, ticker_data)
+    df_scored["score"] = (
+        df_scored["score"] * (1 - _SECTOR_FLOW_WEIGHT) +
+        df_scored["sector_flow_score"].astype(float) * _SECTOR_FLOW_WEIGHT
+    ).clip(0, 100)
 
     # ── Layer 3：Top-N 輸出 ──────────────────────────────────────────
     top_n = config.get("output", {}).get("top_n", 20)

@@ -98,13 +98,39 @@ html, body {
 #header {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 12px;
   padding: 0 20px;
   height: 50px;
   background: var(--bg1);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   position: relative;
+}
+
+#header-scroll {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+#header-scroll::-webkit-scrollbar { height: 3px; }
+#header-scroll::-webkit-scrollbar-track { background: transparent; }
+#header-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+#header-scroll.is-scrolling {
+  scrollbar-color: var(--bg3) transparent;
+}
+#header-scroll.is-scrolling::-webkit-scrollbar-thumb {
+  background: var(--bg3);
 }
 
 /* Decorative top accent line */
@@ -128,6 +154,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 #logo::before {
@@ -196,6 +223,7 @@ html, body {
 #universe-tabs {
   display: flex;
   gap: 3px;
+  flex-shrink: 0;
 }
 
 .tab {
@@ -228,10 +256,10 @@ html, body {
 
 /* Right side controls */
 #header-right {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 14px;
+  flex-shrink: 0;
 }
 
 #status-badge {
@@ -283,6 +311,7 @@ html, body {
   display: flex;
   flex: 1;
   overflow: hidden;
+  min-height: 0;
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -425,12 +454,15 @@ html, body {
   overflow-x: auto;
   position: relative;
   min-height: 0;   /* 修復 flex 容器高度計算，確保捲軸可用 */
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
 }
 
 #table-wrap::-webkit-scrollbar { width: 5px; height: 5px; }
-#table-wrap::-webkit-scrollbar-track { background: var(--bg0); }
-#table-wrap::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
-#table-wrap::-webkit-scrollbar-thumb:hover { background: var(--text2); }
+#table-wrap::-webkit-scrollbar-track { background: transparent; }
+#table-wrap::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+#table-wrap.is-scrolling { scrollbar-color: var(--bg3) transparent; }
+#table-wrap.is-scrolling::-webkit-scrollbar-thumb { background: var(--bg3); }
 
 #scores-table {
   width: 100%;
@@ -813,6 +845,11 @@ tr.expanded .expand-btn { transform: rotate(90deg); opacity: 1; }
 }
 #scores-table td.sector-rs.strong { color: var(--up);   }   /* 前 30% 強板塊 */
 #scores-table td.sector-rs.weak   { color: var(--gold); }   /* 後 30% 弱板塊 */
+#scores-table td.sector-flow.flow-main { color: var(--accent); font-weight: 700; }
+#scores-table td.sector-flow.flow-rotate { color: var(--gold); font-weight: 700; }
+#scores-table td.sector-flow.flow-watch { color: var(--text1); }
+#scores-table td.sector-flow.flow-exit { color: var(--down); font-weight: 700; }
+#scores-table td.sector-flow-score { color: var(--accent); font-weight: 600; }
 #scores-table td.rs-rating  { font-weight: 600; color: var(--accent); }
 #scores-table td.rs-trend   { font-size: 14px; font-weight: 700; }
 #scores-table td.rs-trend.trend-up   { color: var(--down); }   /* ↑ 紅 */
@@ -825,6 +862,180 @@ tr.expanded .expand-btn { transform: rotate(90deg); opacity: 1; }
 #scores-table td.chips-down { color: var(--down); }
 #scores-table td.margin-up   { color: var(--down); }  /* margin increase = bearish */
 #scores-table td.margin-down { color: var(--up);   }
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   SECTOR ROTATION DRAWER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+#rotation-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+  z-index: 260;
+}
+
+#rotation-drawer-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#rotation-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(430px, 92vw);
+  background: #151c28;
+  border-left: 1px solid rgba(255,255,255,0.10);
+  box-shadow: -18px 0 38px rgba(0,0,0,0.35);
+  z-index: 270;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+#rotation-drawer.open { transform: translateX(0); }
+
+.rotation-drawer-head {
+  padding: 18px 20px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  position: relative;
+}
+
+#rotation-drawer-title {
+  font-family: var(--tc);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text0);
+  padding-right: 36px;
+  line-height: 1.2;
+}
+
+#rotation-drawer-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: rgba(221,230,240,0.55);
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#rotation-drawer-close:hover { color: var(--text0); }
+
+.rotation-status-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 12px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.rotation-status-badge.main { color: var(--accent); background: rgba(0,212,170,0.13); }
+.rotation-status-badge.rotate { color: var(--gold); background: rgba(245,158,11,0.13); }
+.rotation-status-badge.watch { color: var(--text1); background: rgba(94,116,144,0.15); }
+.rotation-status-badge.exit { color: #fb6a3c; background: rgba(251,106,60,0.15); }
+
+.rotation-metrics {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  display: grid;
+  gap: 8px;
+}
+
+.rotation-metric {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  font-family: var(--tc);
+}
+
+.rotation-metric span:first-child {
+  color: rgba(221,230,240,0.55);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.rotation-metric span:last-child {
+  color: var(--text0);
+  font-size: 17px;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.drawer-pos { color: var(--accent) !important; }
+.drawer-neg { color: #fb6a3c !important; }
+
+.rotation-stock-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.rotation-stock-wrap {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.rotation-stock-wrap::-webkit-scrollbar { width: 5px; height: 5px; }
+.rotation-stock-wrap::-webkit-scrollbar-track { background: transparent; }
+.rotation-stock-wrap::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+.rotation-stock-wrap.is-scrolling { scrollbar-color: var(--bg3) transparent; }
+.rotation-stock-wrap.is-scrolling::-webkit-scrollbar-thumb { background: var(--bg3); }
+
+.rotation-stock-table th,
+.rotation-stock-table td {
+  border-bottom: 1px solid rgba(255,255,255,0.055);
+  padding: 10px 12px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rotation-stock-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #151c28;
+  color: rgba(94,116,144,0.72);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.7px;
+}
+
+.rotation-stock-table td {
+  color: var(--text0);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.rotation-stock-table .code-col,
+.rotation-stock-table .name-col { text-align: left; }
+.rotation-stock-table .code-col { width: 16%; font-weight: 700; }
+.rotation-stock-table .name-col { width: 18%; color: rgba(221,230,240,0.72); }
+.rotation-stock-table .num-col  { width: 22%; }
+
+.rotation-empty {
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--text2);
+  font-size: 13px;
+}
 
 /* 漲停 / 跌停 row highlight — 移除整列底色，只保留 price/漲跌/日% 三欄的 td.limit-up/down */
 
@@ -974,11 +1185,15 @@ td.signal-cell {
   background: var(--bg1);
   overflow-x: auto;
   overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
 }
 
 #chart-topbar::-webkit-scrollbar { height: 3px; }
 #chart-topbar::-webkit-scrollbar-track { background: transparent; }
-#chart-topbar::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+#chart-topbar::-webkit-scrollbar-thumb { background: transparent; border-radius: 2px; }
+#chart-topbar.is-scrolling { scrollbar-color: var(--bg3) transparent; }
+#chart-topbar.is-scrolling::-webkit-scrollbar-thumb { background: var(--bg3); }
 
 #chart-symbol {
   font-family: var(--mono);
@@ -1173,17 +1388,19 @@ td.signal-cell {
 
   <!-- ── HEADER ── -->
   <div id="header">
-    <div id="logo">MOMENTUM <em>/ SCREEN</em></div>
-    <div class="vsep"></div>
+    <div id="header-scroll">
+      <div id="logo">MOMENTUM <em>/ SCREEN</em></div>
+      <div class="vsep"></div>
 
-    <div id="universe-tabs">
-      <button class="tab active" data-u="all">美股</button>
-      <button class="tab" data-u="tw">台股</button>
-      <button class="tab" data-u="crypto">加密貨幣</button>
+      <div id="universe-tabs">
+        <button class="tab active" data-u="all">美股</button>
+        <button class="tab" data-u="tw">台股</button>
+        <button class="tab" data-u="crypto">加密貨幣</button>
+      </div>
+
+      <div id="market-indices"></div>
+      <div id="market-sentiment" style="display:none"></div>
     </div>
-
-    <div id="market-indices"></div>
-    <div id="market-sentiment" style="display:none"></div>
 
     <div id="header-right">
       <div id="status-badge">
@@ -1230,6 +1447,7 @@ td.signal-cell {
           <button class="tw-strategy-btn active" data-strategy="rs">RS排名</button>
           <button class="tw-strategy-btn" data-strategy="chips">籌碼加乘</button>
           <button class="tw-strategy-btn" data-strategy="confluence">RS籌碼共振</button>
+          <button class="tw-strategy-btn" data-strategy="rotation">板塊輪動</button>
         </div>
         <div id="crypto-strategy-tabs" style="display:none">
           <button class="tw-strategy-btn active" data-strategy="rs">RS排名</button>
@@ -1335,6 +1553,31 @@ td.signal-cell {
   </div><!-- /body -->
 </div><!-- /app -->
 
+<div id="rotation-drawer-backdrop"></div>
+<aside id="rotation-drawer" aria-hidden="true">
+  <div class="rotation-drawer-head">
+    <div id="rotation-drawer-title">—</div>
+    <button id="rotation-drawer-close" title="關閉">×</button>
+    <div id="rotation-drawer-status" class="rotation-status-badge watch">—</div>
+  </div>
+  <div id="rotation-drawer-metrics" class="rotation-metrics"></div>
+  <div id="rotation-stock-wrap" class="rotation-stock-wrap">
+    <table class="rotation-stock-table">
+      <thead>
+        <tr>
+          <th class="code-col">代碼</th>
+          <th class="name-col">名稱</th>
+          <th class="num-col">價格</th>
+          <th class="num-col">當日漲跌</th>
+          <th class="num-col">當日買超</th>
+        </tr>
+      </thead>
+      <tbody id="rotation-drawer-stocks"></tbody>
+    </table>
+    <div id="rotation-drawer-empty" class="rotation-empty" style="display:none">目前沒有成分股資料</div>
+  </div>
+</aside>
+
 <!-- Error toast -->
 <div id="toast"></div>
 
@@ -1429,6 +1672,9 @@ const TW_COLS = [
   { key:'volume',     label:'成交量(張)', w:'90px',  align:'right',  fmt:v=>v!=null?v.toLocaleString():'—' },
   { key:'ret_10d',    label:'10日%',     w:'68px',  align:'right',  cls:'pct',         fmt:pct },
   { key:'ret_20d',    label:'20日%',     w:'68px',  align:'right',  cls:'pct',         fmt:pct },
+  { key:'sector_theme',       label:'主題',      w:'90px',  align:'center', cls:'sector-cell', fmt:v=>v||'—' },
+  { key:'sector_flow_status', label:'板塊資金',  w:'76px',  align:'center', cls:'sector-flow', fmt:v=>v||'—' },
+  { key:'sector_flow_score',  label:'板塊分',    w:'70px',  align:'right',  cls:'sector-flow-score', fmt:v=>v!=null?v.toFixed(1):'—' },
   { key:'fi_net',         label:'外資(張)',  w:'82px',  align:'right',  cls:'chips',       fmt:v=>v!=null?Math.round(v/1000).toLocaleString():'—' },
   { key:'it_net',         label:'投信(張)',  w:'82px',  align:'right',  cls:'chips',       fmt:v=>v!=null?Math.round(v/1000).toLocaleString():'—' },
   { key:'fi_consec_days', label:'外資連買',  w:'72px',  align:'right',  fmt:v=>v!=null&&v>0?`${v}天`:'—' },
@@ -1438,6 +1684,16 @@ const TW_COLS = [
   { key:'rsi',        label:'RSI',       w:'60px',  align:'right',  cls:'rsi',         fmt:v=>v!=null?v.toFixed(1):'—' },
   { key:'_signal',    label:'訊號',      w:'118px', minW:118, align:'center', cls:'signal-cell' },
   { key:'tw_score',   label:'SCORE',     w:'90px',  align:'right',  cls:'score',       fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
+];
+
+const TW_ROTATION_COLS = [
+  { key:'rank',                label:'RANK',     w:'60px',  align:'center', cls:'rank-cell', fmt:v=>v??'—', sticky:true },
+  { key:'sector_theme',        label:'板塊',     w:'130px', align:'left',   cls:'sector-cell', fmt:v=>v||'—', sticky:true },
+  { key:'sector_flow_status',  label:'狀態',     w:'86px',  align:'center', cls:'sector-flow', fmt:v=>v||'—' },
+  { key:'sector_net_5d_yi',    label:'5日資金(億)',  w:'100px', align:'right', cls:'chips', fmt:v=>v!=null?`${v>=0?'+':''}${v.toFixed(2)}`:'—' },
+  { key:'sector_net_20d_yi',   label:'20日資金(億)', w:'108px', align:'right', cls:'chips', fmt:v=>v!=null?`${v>=0?'+':''}${v.toFixed(2)}`:'—' },
+  { key:'sector_accel_yi',     label:'加速度',   w:'90px',  align:'right', cls:'chips', fmt:v=>v!=null?`${v>=0?'+':''}${v.toFixed(2)}`:'—' },
+  { key:'sector_flow_score',   label:'板塊分',   w:'100px', align:'right', cls:'score', fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
 ];
 
 const CRYPTO_RS_COLS = [
@@ -1473,6 +1729,92 @@ function formatCryptoPrice(v) {
   if (n >= 100) return n.toFixed(2);
   if (n >= 1) return n.toFixed(4);
   return n.toPrecision(4);
+}
+
+function formatYi(v, opts = {}) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  const sign = n > 0 ? '+' : n < 0 ? '-' : '';
+  const suffix = opts.perDay ? ' 億/天' : ' 億';
+  return `${sign}${Math.abs(n).toFixed(2)}${suffix}`;
+}
+
+function formatSignedPct(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  const sign = n > 0 ? '+' : n < 0 ? '-' : '';
+  return `${sign}${Math.abs(n * 100).toFixed(2)}%`;
+}
+
+function signedClass(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n === 0) return '';
+  return n > 0 ? 'drawer-pos' : 'drawer-neg';
+}
+
+function rotationStatusClass(status) {
+  if (status === '主力') return 'main';
+  if (status === '輪動') return 'rotate';
+  if (status === '退潮') return 'exit';
+  return 'watch';
+}
+
+function escapeHtml(v) {
+  return String(v ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[ch]));
+}
+
+function openRotationDrawer(row) {
+  const drawer = document.getElementById('rotation-drawer');
+  const backdrop = document.getElementById('rotation-drawer-backdrop');
+  const status = row.sector_flow_status || '—';
+  const metrics = [
+    ['當日法人淨買超', row.sector_net_1d_yi, formatYi(row.sector_net_1d_yi)],
+    ['近 5 日法人淨買超', row.sector_net_5d_yi, formatYi(row.sector_net_5d_yi)],
+    ['近 20 日累計', row.sector_net_20d_yi, formatYi(row.sector_net_20d_yi)],
+    ['資金加速度', row.sector_accel_yi, formatYi(row.sector_accel_yi, { perDay: true })],
+    ['近 5 日漲跌', row.sector_ret_5d, formatSignedPct(row.sector_ret_5d)],
+  ];
+
+  document.getElementById('rotation-drawer-title').textContent = row.sector_theme || '板塊明細';
+  const statusEl = document.getElementById('rotation-drawer-status');
+  statusEl.textContent = status;
+  statusEl.className = `rotation-status-badge ${rotationStatusClass(status)}`;
+
+  document.getElementById('rotation-drawer-metrics').innerHTML = metrics.map(([label, raw, text]) =>
+    `<div class="rotation-metric"><span>${label}</span><span class="${signedClass(raw)}">${text}</span></div>`
+  ).join('');
+
+  const tbody = document.getElementById('rotation-drawer-stocks');
+  const empty = document.getElementById('rotation-drawer-empty');
+  const stocks = [...(row.stocks || [])].sort((a, b) => (b.net_1d_yi || 0) - (a.net_1d_yi || 0));
+  tbody.innerHTML = stocks.map(stock => `
+    <tr>
+      <td class="code-col">${escapeHtml(stock.stock_id || (stock.ticker || '').replace(/\.(TW|TWO)$/, ''))}</td>
+      <td class="name-col">${escapeHtml(stock.name || '—')}</td>
+      <td class="${signedClass(stock.day_return)}">${stock.price != null ? (Number.isInteger(stock.price) ? stock.price : stock.price.toFixed(2)) : '—'}</td>
+      <td class="${signedClass(stock.day_return)}">${formatSignedPct(stock.day_return)}</td>
+      <td class="${signedClass(stock.net_1d_yi)}">${formatYi(stock.net_1d_yi)}</td>
+    </tr>
+  `).join('');
+  empty.style.display = stocks.length ? 'none' : 'block';
+
+  backdrop.classList.add('open');
+  drawer.classList.add('open');
+  drawer.setAttribute('aria-hidden', 'false');
+}
+
+function closeRotationDrawer() {
+  const drawer = document.getElementById('rotation-drawer');
+  const backdrop = document.getElementById('rotation-drawer-backdrop');
+  drawer.classList.remove('open');
+  backdrop.classList.remove('open');
+  drawer.setAttribute('aria-hidden', 'true');
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1546,6 +1888,7 @@ let emaSeries    = {};
 function cols() {
   if (S.universe === 'crypto') return CRYPTO_RS_COLS;
   if (S.universe === 'tw') {
+    if (S.twStrategy === 'rotation') return TW_ROTATION_COLS;
     return S.twStrategy === 'chips' ? TW_COLS : TW_RS_COLS;
   }
   if (S.strategyMode === 'rtf') return US_RTF_COLS;
@@ -1554,6 +1897,7 @@ function cols() {
 function scoreKey() {
   if (S.universe === 'crypto') return 'rs_rating';
   if (S.universe === 'tw') {
+    if (S.twStrategy === 'rotation') return 'sector_flow_score';
     return S.twStrategy === 'chips' ? 'tw_score' : 'rs_score';
   }
   if (S.strategyMode === 'rtf') return 'rtf_score';
@@ -1576,7 +1920,8 @@ function applyFilter() {
   S.filteredScores = q
     ? S.scores.filter(r =>
         (r.ticker||'').toLowerCase().includes(q) ||
-        (r.name||'').toLowerCase().includes(q))
+        (r.name||'').toLowerCase().includes(q) ||
+        (r.sector_theme||'').toLowerCase().includes(q))
     : S.scores;
 }
 
@@ -1786,16 +2131,20 @@ function renderBody(opts = {}) {
 
   data.forEach((row, i) => {
     const tr = document.createElement('tr');
-    tr.dataset.ticker = row.ticker;
+    const rowKey = row.ticker || row.sector_theme || '';
+    tr.dataset.ticker = rowKey;
     tr.dataset.rank = i + 1;
     if (S.selectedTicker === row.ticker) tr.classList.add('selected');
     if (!animate && i < 60) { tr.classList.add('row-animate'); tr.style.animationDelay = `${i * 12}ms`; }
-    if (animate && !oldRects.has(row.ticker) && i < 80) tr.classList.add('rank-new');
+    if (animate && !oldRects.has(rowKey) && i < 80) tr.classList.add('rank-new');
     if (S.universe === 'tw') {
       if (row.is_limit_up)   tr.classList.add('tw-limit-up');
       else if (row.is_limit_down) tr.classList.add('tw-limit-down');
     }
-    tr.addEventListener('click', () => pickTicker(row.ticker));
+    if (row.ticker) tr.addEventListener('click', () => pickTicker(row.ticker));
+    else if (S.universe === 'tw' && S.twStrategy === 'rotation') {
+      tr.addEventListener('click', () => openRotationDrawer(row));
+    }
 
     // 漲停 / 跌停：只使用 tw-stock-agent 後端傳回的交易所依據，不用漲跌幅估算。
     const _limitUp   = S.universe === 'tw' && row.is_limit_up === true;
@@ -1884,6 +2233,12 @@ function renderBody(opts = {}) {
         const mult = row.sector_multiplier;
         if (mult >= 1.10) td.classList.add('strong');
         else if (mult <= 0.90) td.classList.add('weak');
+      }
+      if (col.key === 'sector_flow_status' && val) {
+        if (val === '主力') td.classList.add('flow-main');
+        else if (val === '輪動') td.classList.add('flow-rotate');
+        else if (val === '觀望') td.classList.add('flow-watch');
+        else if (val === '退潮') td.classList.add('flow-exit');
       }
       if (col.key === 'rs_trend' && val) {
         if (val === '↑') td.classList.add('trend-up');
@@ -2344,6 +2699,8 @@ function showToast(msg) {
 
 async function startFetch() {
   stopLiveRefresh();
+  _indicesSSE.stop();
+  _cryptoSSE.stop();
   // 靜態模式：直接讀 JSON，不打後端 API
   if (IS_STATIC) { await bootstrapStaticData(); return; }
   lockUI(true);
@@ -2410,7 +2767,7 @@ async function pollState() {
       hideOverlay(); lockUI(false);
       setStatus('done', `更新 ${s.last_updated}`);
       document.getElementById('updated-label').textContent = `更新：${s.last_updated}`;
-      startLiveRefresh();
+      startRealtimeForUniverse();
 
     } else if (s.status === 'error') {
       clearInterval(pollTimer); pollTimer = null;
@@ -2468,6 +2825,14 @@ function startLiveRefresh() {
   if (IS_STATIC) return;
   const intervalMs = 15 * 60 * 1000;  // 美股 15 分鐘
   liveTimer = setInterval(refreshLivePrices, intervalMs);
+}
+
+function startRealtimeForUniverse() {
+  if (S.universe === 'tw' || S.universe === 'crypto') {
+    fetchIndices();
+  } else {
+    startLiveRefresh();
+  }
 }
 
 async function refreshLivePrices() {
@@ -2578,7 +2943,7 @@ async function bootstrapExistingScores() {
     await loadScores({ resetSort: true });
     setStatus(s.status === 'error' ? 'error' : 'done', s.last_updated ? `更新 ${s.last_updated}` : '已載入');
     document.getElementById('updated-label').textContent = s.last_updated ? `更新：${s.last_updated}` : '—';
-    if (s.status === 'done') startLiveRefresh();
+    if (s.status === 'done') startRealtimeForUniverse();
   } catch(e) {
     console.warn('bootstrap scores failed', e);
   }
@@ -2655,7 +3020,8 @@ const _indicesSSE = {
 };
 
 async function fetchIndices() {
-  const universe = S.universe === 'tw' ? 'tw' : (S.universe === 'crypto' ? 'crypto' : 'us');
+  const requestedUniverse = S.universe;
+  const universe = requestedUniverse === 'tw' ? 'tw' : (requestedUniverse === 'crypto' ? 'crypto' : 'us');
 
   if (universe === 'tw') {
     // 台股：啟動 SSE 串流（5 秒推一次）
@@ -2674,6 +3040,7 @@ async function fetchIndices() {
   try {
     const r = await fetch(`/api/indices?universe=${universe}`);
     const d = await r.json();
+    if (S.universe !== requestedUniverse) return;
     renderIndices(d.indices || []);
     renderSentiment(d.sentiment || null, universe);
   } catch(e) {
@@ -2752,17 +3119,15 @@ function renderIndices(indices) {
     if (!hasChange) {
       chgDisplay = '';
     } else if (isTw && idx.change != null) {
-      chgDisplay = Math.abs(idx.change) >= 10
+      const pointDisplay = Math.abs(idx.change) >= 10
         ? `${sign}${Math.round(idx.change).toLocaleString()}`
         : `${sign}${idx.change.toFixed(2)}`;
+      chgDisplay = `${pointDisplay} ${sign}${idx.change_pct.toFixed(2)}%`;
     } else {
       chgDisplay = `${sign}${idx.change_pct.toFixed(2)}%`;
     }
-    const sessionBadge = idx.session === '夜盤'
-      ? `<span style="font-size:9px;color:var(--text-dim);margin-left:2px">夜</span>`
-      : '';
     return `<span class="idx-item">
-      <span class="idx-name">${idx.name}${sessionBadge}</span>
+      <span class="idx-name">${idx.name}</span>
       <span class="idx-price">${price}</span>
       ${chgDisplay ? `<span class="idx-chg" style="color:${col}">${chgDisplay}</span>` : ''}
     </span>`;
@@ -3084,7 +3449,7 @@ document.querySelectorAll('.tab').forEach(btn => {
           }
           setStatus('done', `更新 ${st.last_updated}`);
           document.getElementById('updated-label').textContent = `更新：${st.last_updated}`;
-          startLiveRefresh();
+          startRealtimeForUniverse();
         }
       } catch(_) {}
     })();
@@ -3196,10 +3561,36 @@ async function loadTwStrategyMulti() {
   try {
     const rsUrl = IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores';
     const chipsUrl = IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-scores';
+    const rotationUrl = IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-sector-rotation';
 
     if (S.twStrategy === 'chips') {
       const chipsD = await (await fetch(chipsUrl)).json();
       scores = chipsD.scores || [];
+    } else if (S.twStrategy === 'rotation') {
+      const rotationD = await (await fetch(rotationUrl)).json();
+      if (rotationD.sectors) {
+        scores = rotationD.sectors || [];
+      } else {
+        const seen = new Map();
+        (rotationD.scores || []).forEach(row => {
+          const theme = row.sector_theme;
+          if (!theme || theme === '未分類' || seen.has(theme)) return;
+          seen.set(theme, {
+            rank: seen.size + 1,
+            sector_theme: theme,
+            sector_flow_status: row.sector_flow_status,
+            sector_flow_score: row.sector_flow_score,
+            sector_net_1d_yi: row.sector_net_1d_yi,
+            sector_net_5d_yi: row.sector_net_5d_yi,
+            sector_net_20d_yi: row.sector_net_20d_yi,
+            sector_accel_yi: row.sector_accel_yi,
+            sector_ret_5d: row.sector_ret_5d,
+            stocks: row.stocks || [],
+          });
+        });
+        scores = [...seen.values()].sort((a, b) => (b.sector_flow_score || 0) - (a.sector_flow_score || 0));
+        scores.forEach((r, i) => r.rank = i + 1);
+      }
     } else if (S.twStrategy === 'confluence') {
       const rsD = await (await fetch(rsUrl)).json();
       const chipsD = await (await fetch(chipsUrl)).json();
@@ -3401,8 +3792,26 @@ initChart();
 updateStrategyTabs();
 renderHead();
 renderBody();
-bootstrapExistingScores();
-fetchIndices();
+
+async function initApp() {
+  await bootstrapExistingScores();
+  await fetchIndices();
+}
+initApp();
+
+// Scrollbars: show only while actively scrolling.
+;(function() {
+  ['header-scroll', 'table-wrap', 'chart-topbar', 'rotation-stock-wrap'].forEach(id => {
+    const scroller = document.getElementById(id);
+    if (!scroller) return;
+    let hideTimer = null;
+    scroller.addEventListener('scroll', () => {
+      scroller.classList.add('is-scrolling');
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => scroller.classList.remove('is-scrolling'), 700);
+    }, { passive: true });
+  });
+})();
 
 // ── 關閉 / 展開圖表 ──
 document.getElementById('close-chart-btn').addEventListener('click', () => {
@@ -3412,6 +3821,12 @@ document.getElementById('close-chart-btn').addEventListener('click', () => {
   if (divider) divider.style.display = 'none';
   S.selectedTicker = null;
   document.querySelectorAll('#t-body tr').forEach(tr => tr.classList.remove('selected'));
+});
+
+document.getElementById('rotation-drawer-close').addEventListener('click', closeRotationDrawer);
+document.getElementById('rotation-drawer-backdrop').addEventListener('click', closeRotationDrawer);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeRotationDrawer();
 });
 
 // ── Sticky column left-offset updater ──

@@ -29,6 +29,7 @@ from scoring.crypto_engine import compute_crypto_rs_scores
 from scoring.tw_engine import (
     compute_tw_scores, compute_tw_rs_scores,
     compute_tw_observation_candidates,
+    compute_tw_sector_rotation,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ _state: dict = {
     "tw_rs_scores": [],             # 台股 RS Score 排名
     "tw_breakout_candidates": [],   # 台股突破觀察清單
     "tw_early_stage": [],           # 台股起漲觀察清單
+    "tw_sector_rotation": [],       # 台股板塊資金輪動
     "crypto_rs_scores": [],         # 加密貨幣 RS 排名
     "ohlcv": {},
     "universe": "sp500",
@@ -1070,12 +1072,188 @@ def _fetch_tw_futures() -> dict | None:
         return None
 
 
+def _clamp(value: float, lo: float = 0.0, hi: float = 100.0) -> float:
+    return max(lo, min(hi, float(value)))
+
+
+def _linear_score(value: float | None, low: float, high: float) -> float:
+    if value is None:
+        return 50.0
+    if high == low:
+        return 50.0
+    return _clamp((float(value) - low) / (high - low) * 100.0)
+
+
+def _sentiment_label(score: int) -> str:
+    if score >= 80:
+        return "狂熱"
+    if score >= 65:
+        return "偏多"
+    if score >= 50:
+        return "中性"
+    if score >= 35:
+        return "偏空"
+    return "恐慌"
+
+
+def _close_values_from_ohlcv(data: dict | None) -> list[float]:
+    if not data:
+        return []
+    closes = data.get("close") or data.get("Close") or []
+    result = []
+    for v in closes:
+        f = _safe_float(v)
+        if f is not None and f > 0:
+            result.append(f)
+    return result
+
+
+def _ratio_to_market_score(ratio: float | None) -> float:
+    """Map market participation ratios into a neutral 50 around 50% breadth."""
+    return _linear_score(ratio, 0.25, 0.75)
+
+
+def _compute_breadth_component(rows: list[dict], ohlcv: dict) -> float:
+    """
+    Breadth score (0-100): combines 20D positive-return breadth and MA participation.
+    20D return > 0 carries 40%, price > MA20 30%, price > MA60 30%.
+    """
+    if not rows:
+        return 50.0
+
+    ret_rows = [r for r in rows if r.get("ret_20d") is not None]
+    ret_ratio = (
+        sum(1 for r in ret_rows if (r.get("ret_20d") or 0) > 0) / len(ret_rows)
+        if ret_rows else None
+    )
+
+    ma20_hit = ma20_total = 0
+    ma60_hit = ma60_total = 0
+    for r in rows:
+        closes = _close_values_from_ohlcv(ohlcv.get(r.get("ticker")))
+        if len(closes) >= 20:
+            ma20_total += 1
+            if closes[-1] > sum(closes[-20:]) / 20:
+                ma20_hit += 1
+        if len(closes) >= 60:
+            ma60_total += 1
+            if closes[-1] > sum(closes[-60:]) / 60:
+                ma60_hit += 1
+
+    ma20_ratio = ma20_hit / ma20_total if ma20_total else None
+    ma60_ratio = ma60_hit / ma60_total if ma60_total else None
+    return (
+        _ratio_to_market_score(ret_ratio) * 0.40 +
+        _ratio_to_market_score(ma20_ratio) * 0.30 +
+        _ratio_to_market_score(ma60_ratio) * 0.30
+    )
+
+
+def _compute_flow_component(rows: list[dict]) -> float:
+    """
+    Turnover / capital diffusion score (0-100).
+    Uses up-turnover share and turnover-weighted amount_ratio expansion.
+    """
+    if not rows:
+        return 50.0
+
+    up_value = 0.0
+    down_value = 0.0
+    weighted_amount_ratio = 0.0
+    weight_total = 0.0
+    for r in rows:
+        turnover = _safe_float(r.get("turnover_10k")) or 0.0
+        if turnover <= 0:
+            turnover = (_safe_float(r.get("price")) or 0.0) * (_safe_float(r.get("volume")) or 0.0) / 10.0
+        ret = _safe_float(r.get("day_return")) or 0.0
+        if ret > 0:
+            up_value += turnover
+        elif ret < 0:
+            down_value += turnover
+        amount_ratio = _safe_float(r.get("amount_ratio"))
+        if turnover > 0 and amount_ratio is not None:
+            weighted_amount_ratio += turnover * amount_ratio
+            weight_total += turnover
+
+    total_directional = up_value + down_value
+    up_share = up_value / total_directional if total_directional > 0 else None
+    expansion = weighted_amount_ratio / weight_total if weight_total > 0 else None
+
+    return _ratio_to_market_score(up_share) * 0.60 + _linear_score(expansion, 0.80, 1.50) * 0.40
+
+
+def _compute_index_momentum_component(closes: list[float], today_chg_pct: float | None = None) -> float:
+    """
+    Index momentum score (0-100): trend location, MA slopes, and 5D/20D returns.
+    Intraday/1D change is only a small adjustment.
+    """
+    closes = [float(c) for c in closes if c and c > 0]
+    if len(closes) < 20:
+        return 50.0
+
+    price = closes[-1]
+    ma20 = sum(closes[-20:]) / 20
+    ma60 = sum(closes[-60:]) / 60 if len(closes) >= 60 else ma20
+
+    location = (50.0 if price > ma20 else 0.0) + (50.0 if price > ma60 else 0.0)
+
+    slope_parts = []
+    if len(closes) >= 40:
+        prev_ma20 = sum(closes[-40:-20]) / 20
+        slope_parts.append(_linear_score((ma20 - prev_ma20) / prev_ma20 if prev_ma20 else None, -0.02, 0.02))
+    if len(closes) >= 120:
+        prev_ma60 = sum(closes[-120:-60]) / 60
+        slope_parts.append(_linear_score((ma60 - prev_ma60) / prev_ma60 if prev_ma60 else None, -0.03, 0.03))
+    slope = sum(slope_parts) / len(slope_parts) if slope_parts else 50.0
+
+    ret_parts = []
+    if len(closes) >= 6 and closes[-6] > 0:
+        ret_parts.append(_linear_score((price - closes[-6]) / closes[-6], -0.03, 0.03))
+    if len(closes) >= 21 and closes[-21] > 0:
+        ret_parts.append(_linear_score((price - closes[-21]) / closes[-21], -0.08, 0.08))
+    ret_score = sum(ret_parts) / len(ret_parts) if ret_parts else 50.0
+
+    score = location * 0.40 + slope * 0.35 + ret_score * 0.25
+    if today_chg_pct is not None:
+        if today_chg_pct <= -4.0:
+            score -= 15.0
+        elif today_chg_pct <= -2.0:
+            score -= 8.0
+        elif today_chg_pct >= 3.0:
+            score += 5.0
+        elif today_chg_pct >= 1.5:
+            score += 3.0
+    return _clamp(score)
+
+
+def _compute_volatility_component(vix_now: float | None, vix_chg_pct: float | None = None) -> float:
+    """
+    Volatility risk score (0-100): lower volatility is better.
+    Uses calibrated VIXTWN bands plus a single-day spike penalty.
+    """
+    if vix_now is None:
+        return 50.0
+    # VIXTWN roughly in the low teens is calm; above 30 is panic.
+    score = 100.0 - _linear_score(vix_now, 12.0, 32.0)
+    if vix_chg_pct is not None:
+        if vix_chg_pct >= 30:
+            score -= 35.0
+        elif vix_chg_pct >= 15:
+            score -= 22.0
+        elif vix_chg_pct >= 8:
+            score -= 10.0
+        elif vix_chg_pct <= -10:
+            score += 8.0
+    return _clamp(score)
+
+
 def _compute_tw_sentiment(vix_now: float | None = None, vix_chg_pct: float | None = None) -> dict:
     """
     台股市場氣氛值（0-100）：
-      廣度訊號 50%  — 個股 ret_20d > 0 的比例（TWSE / TPEX 分開計算）
-      動能訊號 30%  — 加權指數 / 櫃買指數相對 MA20 / MA60 的位置
-      波動訊號 20%  — VIXTWN 絕對值 + 單日暴漲懲罰（無資料時 fallback ^VIX）
+      廣度訊號 45%  — 20D 報酬、price > MA20、price > MA60 的市場參與度
+      動能訊號 30%  — 指數位置、MA 斜率、5D/20D 報酬；當日漲跌只做小幅修正
+      波動訊號 20%  — VIXTWN 絕對值 + 單日急升懲罰（無資料時 fallback ^VIX）
+      資金訊號  5%  — 上漲成交值占比 + 成交值擴張
 
     vix_now / vix_chg_pct：由 indices handler 傳入即時值（VIXTWN），避免重複抓歷史日K。
 
@@ -1084,36 +1262,23 @@ def _compute_tw_sentiment(vix_now: float | None = None, vix_chg_pct: float | Non
         "otc":    { "score": int, "label": ... } }   # 櫃買（TPEX .TWO）
     """
     import yfinance as yf
-    import numpy as np
 
-    # ── 廣度訊號 (0-50) ──────────────────────────────────────────────────────
     with _lock:
         scores = list(_state.get("scores", []))
+        ohlcv = dict(_state.get("ohlcv", {}))
 
-    def _breadth(suffix: str) -> float:
-        subset = [
+    def _rows(suffix: str) -> list[dict]:
+        return [
             r for r in scores
             if r.get("ticker", "").endswith(suffix)
             and r.get("stock_type") == "stock"
         ]
-        if not subset:
-            return 25.0   # 無資料時中性
-        above = sum(1 for r in subset if (r.get("ret_20d") or 0) > 0)
-        pct   = above / len(subset)
-        # 非線性映射：< 30% → 低分  50% → 25  > 70% → 50
-        if pct >= 0.70:
-            return 50.0
-        elif pct >= 0.30:
-            return (pct - 0.30) / 0.40 * 50.0
-        else:
-            return 0.0
 
-    twse_breadth = _breadth(".TW")
-    tpex_breadth = _breadth(".TWO")
+    twse_rows = _rows(".TW")
+    tpex_rows = _rows(".TWO")
 
-    # ── 波動訊號 (0-20) 共用 ^VIX ────────────────────────────────────────────
-    # 優先使用 indices handler 傳入的即時值，避免歷史日K不含今日資料的問題
-    vix_score = 10.0   # default 中性
+    # ── 波動訊號 (0-100) 共用 VIXTWN ─────────────────────────────────────────
+    # 優先使用 indices handler 傳入的即時值，避免歷史日K不含今日資料的問題。
     try:
         _vix = vix_now
         _vix_chg = vix_chg_pct
@@ -1123,53 +1288,22 @@ def _compute_tw_sentiment(vix_now: float | None = None, vix_chg_pct: float | Non
                 _vix = float(vix_df["Close"].iloc[-1])
                 prev = float(vix_df["Close"].iloc[-2])
                 _vix_chg = (_vix - prev) / prev * 100 if prev else 0.0
-        if _vix is not None:
-            # 絕對值分數（0-20）
-            if _vix < 15:     vix_score = 20.0
-            elif _vix < 18:   vix_score = 16.0
-            elif _vix < 20:   vix_score = 12.0
-            elif _vix < 25:   vix_score =  7.0
-            elif _vix < 30:   vix_score =  3.0
-            else:             vix_score =  0.0
-            # 單日暴漲懲罰：VIX 急升代表市場快速恐慌
-            if _vix_chg is not None:
-                if _vix_chg > 30:    vix_score -= 12.0   # 暴漲逾 30%
-                elif _vix_chg > 15:  vix_score -=  7.0   # 暴漲逾 15%
-                elif _vix_chg > 8:   vix_score -=  3.0   # 明顯上升
-                elif _vix_chg < -10: vix_score +=  3.0   # 大幅回落（市場穩定）
-            vix_score = max(0.0, vix_score)
+        vix_score = _compute_volatility_component(_vix, _vix_chg)
     except Exception as exc:
         logger.debug("VIX fetch for TW sentiment failed: %s", exc)
+        vix_score = 50.0
 
-    # ── 動能訊號 (0-30) 各指數獨立 ───────────────────────────────────────────
-    def _momentum_tw(symbol: str, today_chg_pct: float | None = None) -> float:
-        try:
-            df = yf.Ticker(symbol).history(period="6mo", auto_adjust=True, raise_errors=False)
-            if df is None or len(df) < 20:
-                return 15.0
-            close  = df["Close"]
-            price  = float(close.iloc[-1])
-            ma20   = float(close.tail(20).mean())
-            ma60   = float(close.tail(60).mean()) if len(close) >= 60 else ma20
-            score  = 0.0
-            if price > ma20:  score += 15.0
-            if price > ma60:  score += 15.0
-            # 單日漲跌懲罰 / 加分
-            chg = today_chg_pct / 100.0 if today_chg_pct is not None else (
-                (price - float(close.iloc[-2])) / float(close.iloc[-2]) if len(close) >= 2 else 0.0
-            )
-            if chg < -0.04:    score -= 20.0
-            elif chg < -0.03:  score -= 14.0
-            elif chg < -0.015: score -=  7.0
-            elif chg > 0.03:   score +=  5.0
-            return max(0.0, score)
-        except Exception:
-            return 15.0
-
-    twse_mom = _momentum_tw("^TWII")
+    # ── 指數動能 (0-100) 各指數獨立 ─────────────────────────────────────────
+    twse_mom = 50.0
+    try:
+        df = yf.Ticker("^TWII").history(period="1y", auto_adjust=True, raise_errors=False)
+        if df is not None and len(df) >= 20:
+            twse_mom = _compute_index_momentum_component([float(v) for v in df["Close"].dropna()])
+    except Exception as exc:
+        logger.debug("TWSE momentum failed: %s", exc)
 
     # 櫃買指數動能：yfinance 無此 symbol，改用 TPEX open API 歷史資料
-    tpex_mom = 15.0   # default 中性
+    tpex_mom = 50.0
     try:
         import requests as _rq, warnings as _wn
         with _wn.catch_warnings():
@@ -1181,42 +1315,37 @@ def _compute_tw_sentiment(vix_now: float | None = None, vix_chg_pct: float | Non
             ).json()
         if len(tpex_hist) >= 20:
             closes = [float(r.get("Close", 0) or 0) for r in tpex_hist[-120:]]
-            import pandas as _pd
-            s = _pd.Series(closes)
-            price  = s.iloc[-1]
-            ma20   = float(s.tail(20).mean())
-            ma60   = float(s.tail(60).mean()) if len(s) >= 60 else ma20
-            score  = 0.0
-            if price > ma20:  score += 15.0
-            if price > ma60:  score += 15.0
-            chg1d = (closes[-1] - closes[-2]) / closes[-2] if len(closes) >= 2 and closes[-2] else 0.0
-            if chg1d < -0.04:    score -= 20.0
-            elif chg1d < -0.03:  score -= 14.0
-            elif chg1d < -0.015: score -=  7.0
-            elif chg1d > 0.03:   score +=  5.0
-            tpex_mom = max(0.0, score)
+            tpex_mom = _compute_index_momentum_component(closes)
     except Exception as exc:
         logger.debug("TPEX momentum failed: %s", exc)
 
     # ── 合成 ────────────────────────────────────────────────────────────────
-    def _make(breadth: float, mom: float) -> dict:
-        score = int(round(breadth + vix_score + mom))
+    def _make(rows: list[dict], mom: float) -> dict:
+        breadth = _compute_breadth_component(rows, ohlcv)
+        flow = _compute_flow_component(rows)
+        score = int(round(
+            breadth * 0.45 +
+            mom * 0.30 +
+            vix_score * 0.20 +
+            flow * 0.05
+        ))
         score = max(0, min(100, score))
-        if score >= 80:
-            label = "狂熱"
-        elif score >= 60:
-            label = "偏多"
-        elif score >= 40:
-            label = "中性"
-        elif score >= 20:
-            label = "偏空"
-        else:
-            label = "恐慌"
-        return {"score": score, "label": label, "bullish": score >= 60}
+        label = _sentiment_label(score)
+        return {
+            "score": score,
+            "label": label,
+            "bullish": score >= 65,
+            "components": {
+                "breadth": round(breadth, 1),
+                "momentum": round(mom, 1),
+                "volatility": round(vix_score, 1),
+                "flow": round(flow, 1),
+            },
+        }
 
     return {
-        "market": _make(twse_breadth, twse_mom),
-        "otc":    _make(tpex_breadth, tpex_mom),
+        "market": _make(twse_rows, twse_mom),
+        "otc":    _make(tpex_rows, tpex_mom),
     }
 
 
@@ -1487,6 +1616,13 @@ def _fetch_worker(universe: str):
             with _lock:
                 _state["progress"] = "計算籌碼分數…"
             scores_df = compute_tw_scores(raw)
+            sector_rotation = sorted(
+                compute_tw_sector_rotation(raw).values(),
+                key=lambda r: r.get("sector_flow_score", 0),
+                reverse=True,
+            )
+            for i, row in enumerate(sector_rotation, start=1):
+                row["rank"] = i
             with _lock:
                 _state["progress"] = "掃描突破 / 起漲候選…"
             tw_bk_df, tw_early_df = compute_tw_observation_candidates(raw)
@@ -1497,6 +1633,7 @@ def _fetch_worker(universe: str):
                 _state["status"]                = "done"
                 _state["scores"]                = _df_to_records(scores_df)
                 _state["tw_rs_scores"]          = _df_to_records(tw_rs_df)
+                _state["tw_sector_rotation"]    = sector_rotation
                 _state["tw_breakout_candidates"] = _df_to_records(tw_bk_df)
                 _state["tw_early_stage"]        = _df_to_records(tw_early_df)
                 _state["ohlcv"]                 = {k: v for k, v in ohlcv.items() if v}
@@ -1801,6 +1938,37 @@ class Handler(BaseHTTPRequestHandler):
                         self._json(data)
                         return
                 self._json({"scores": tw_rs})
+
+            elif route == "/api/tw-sector-rotation":
+                with _lock:
+                    sector_rotation = _state.get("tw_sector_rotation", []) if _state.get("universe") == "tw" else []
+                if not sector_rotation:
+                    with _lock:
+                        tw_scores = _state.get("scores", []) if _state.get("universe") == "tw" else []
+                    seen = {}
+                    for row in tw_scores:
+                        theme = row.get("sector_theme")
+                        if not theme or theme == "未分類" or theme in seen:
+                            continue
+                        seen[theme] = {
+                            "sector_theme": theme,
+                            "sector_flow_status": row.get("sector_flow_status"),
+                            "sector_flow_score": row.get("sector_flow_score"),
+                            "sector_net_1d_yi": row.get("sector_net_1d_yi"),
+                            "sector_net_5d_yi": row.get("sector_net_5d_yi"),
+                            "sector_net_20d_yi": row.get("sector_net_20d_yi"),
+                            "sector_accel_yi": row.get("sector_accel_yi"),
+                            "sector_ret_5d": row.get("sector_ret_5d"),
+                            "stocks": row.get("stocks") or [],
+                        }
+                    sector_rotation = sorted(
+                        seen.values(),
+                        key=lambda r: r.get("sector_flow_score") or 0,
+                        reverse=True,
+                    )
+                    for i, row in enumerate(sector_rotation, start=1):
+                        row["rank"] = i
+                self._json({"sectors": sector_rotation})
 
             elif route == "/api/tw-breakout-candidates":
                 with _lock:
