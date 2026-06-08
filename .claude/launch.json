@@ -6,6 +6,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "5174", "--directory", "web"],
       "port": 5174
+    },
+    {
+      "name": "stock-server",
+      "runtimeExecutable": ".venv313/bin/python3",
+      "runtimeArgs": ["server.py"],
+      "port": 5177
     }
   ]
 }

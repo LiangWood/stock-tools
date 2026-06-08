@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from data.fetcher import fetch_all
 from data.binance_fetcher import fetch_crypto_all, fetch_crypto_ticker_map
 from data.twse_fetcher import fetch_tw_all
+from data.tw_industry import refresh_industry_map_if_stale
 from data.universe import get_combined_tickers, get_nasdaq100_tickers, get_sp500_tickers
 from scoring.engine import apply_contextual_scoring, compute_scores, compute_breakout_candidates
 from scoring.crypto_engine import compute_crypto_rs_scores
@@ -1610,6 +1611,10 @@ def _fetch_worker(universe: str):
     try:
         if universe == "tw":
             raw = fetch_tw_all(progress_callback=progress)
+            try:
+                refresh_industry_map_if_stale()   # 官方產業別快取（補充板塊「未分類」）
+            except Exception as exc:
+                logger.warning("產業別快取更新失敗：%s", exc)
             with _lock:
                 _state["progress"] = "計算 RS Score…"
             tw_rs_df = compute_tw_rs_scores(raw)

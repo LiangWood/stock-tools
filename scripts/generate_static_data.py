@@ -95,6 +95,7 @@ except Exception as e:
 logger.info("=== 台股資料抓取開始 ===")
 try:
     from data.twse_fetcher import fetch_tw_all
+    from data.tw_industry import refresh_industry_map_if_stale
     from scoring.tw_engine import (
         compute_tw_scores, compute_tw_rs_scores,
         compute_tw_observation_candidates,
@@ -102,6 +103,9 @@ try:
 
     logger.info("Fetching TW stocks…")
     tw_raw = fetch_tw_all()
+
+    logger.info("Refreshing official industry classification cache…")
+    refresh_industry_map_if_stale()
 
     logger.info("Computing TW chips scores…")
     tw_chips_df = compute_tw_scores(tw_raw)

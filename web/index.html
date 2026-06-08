@@ -886,7 +886,7 @@ tr.expanded .expand-btn { transform: rotate(90deg); opacity: 1; }
   top: 0;
   right: 0;
   bottom: 0;
-  width: min(430px, 92vw);
+  width: min(480px, 92vw);
   background: #151c28;
   border-left: 1px solid rgba(255,255,255,0.10);
   box-shadow: -18px 0 38px rgba(0,0,0,0.35);
@@ -977,6 +977,10 @@ tr.expanded .expand-btn { transform: rotate(90deg); opacity: 1; }
 .drawer-pos { color: var(--accent) !important; }
 .drawer-neg { color: #fb6a3c !important; }
 
+/* 股價漲跌（非資金流向）：依台股慣例「紅漲綠跌」，與 #scores-table .tw-up/.tw-down 一致 */
+.drawer-tw-pos { color: var(--down) !important; }
+.drawer-tw-neg { color: var(--up) !important; }
+
 .rotation-stock-table {
   width: 100%;
   border-collapse: collapse;
@@ -1026,9 +1030,9 @@ tr.expanded .expand-btn { transform: rotate(90deg); opacity: 1; }
 
 .rotation-stock-table .code-col,
 .rotation-stock-table .name-col { text-align: left; }
-.rotation-stock-table .code-col { width: 16%; font-weight: 700; }
-.rotation-stock-table .name-col { width: 18%; color: rgba(221,230,240,0.72); }
-.rotation-stock-table .num-col  { width: 22%; }
+.rotation-stock-table .code-col { width: 15%; font-weight: 700; }
+.rotation-stock-table .name-col { width: 25%; color: rgba(221,230,240,0.72); }
+.rotation-stock-table .num-col  { width: 20%; }
 
 .rotation-empty {
   padding: 48px 20px;
@@ -1672,7 +1676,7 @@ const TW_COLS = [
   { key:'volume',     label:'成交量(張)', w:'90px',  align:'right',  fmt:v=>v!=null?v.toLocaleString():'—' },
   { key:'ret_10d',    label:'10日%',     w:'68px',  align:'right',  cls:'pct',         fmt:pct },
   { key:'ret_20d',    label:'20日%',     w:'68px',  align:'right',  cls:'pct',         fmt:pct },
-  { key:'sector_theme',       label:'主題',      w:'90px',  align:'center', cls:'sector-cell', fmt:v=>v||'—' },
+  { key:'sector_theme',       label:'板塊',      w:'90px',  align:'center', cls:'sector-cell', fmt:v=>v||'—' },
   { key:'sector_flow_status', label:'板塊資金',  w:'76px',  align:'center', cls:'sector-flow', fmt:v=>v||'—' },
   { key:'sector_flow_score',  label:'板塊分',    w:'70px',  align:'right',  cls:'sector-flow-score', fmt:v=>v!=null?v.toFixed(1):'—' },
   { key:'fi_net',         label:'外資(張)',  w:'82px',  align:'right',  cls:'chips',       fmt:v=>v!=null?Math.round(v/1000).toLocaleString():'—' },
@@ -1752,6 +1756,13 @@ function signedClass(v) {
   return n > 0 ? 'drawer-pos' : 'drawer-neg';
 }
 
+// 股價漲跌專用：台股慣例「紅漲綠跌」，與資金流向（買超＝綠）的配色相反
+function signedTwClass(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n === 0) return '';
+  return n > 0 ? 'drawer-tw-pos' : 'drawer-tw-neg';
+}
+
 function rotationStatusClass(status) {
   if (status === '主力') return 'main';
   if (status === '輪動') return 'rotate';
@@ -1773,12 +1784,13 @@ function openRotationDrawer(row) {
   const drawer = document.getElementById('rotation-drawer');
   const backdrop = document.getElementById('rotation-drawer-backdrop');
   const status = row.sector_flow_status || '—';
+  // 資金流向（買超為綠／賣超為紅）與股價漲跌（台股慣例：紅漲綠跌）配色相反，分開指定 class function
   const metrics = [
-    ['當日法人淨買超', row.sector_net_1d_yi, formatYi(row.sector_net_1d_yi)],
-    ['近 5 日法人淨買超', row.sector_net_5d_yi, formatYi(row.sector_net_5d_yi)],
-    ['近 20 日累計', row.sector_net_20d_yi, formatYi(row.sector_net_20d_yi)],
-    ['資金加速度', row.sector_accel_yi, formatYi(row.sector_accel_yi, { perDay: true })],
-    ['近 5 日漲跌', row.sector_ret_5d, formatSignedPct(row.sector_ret_5d)],
+    ['當日法人淨買超', row.sector_net_1d_yi, formatYi(row.sector_net_1d_yi), signedClass],
+    ['近 5 日法人淨買超', row.sector_net_5d_yi, formatYi(row.sector_net_5d_yi), signedClass],
+    ['近 20 日累計', row.sector_net_20d_yi, formatYi(row.sector_net_20d_yi), signedClass],
+    ['資金加速度', row.sector_accel_yi, formatYi(row.sector_accel_yi, { perDay: true }), signedClass],
+    ['近 5 日漲跌', row.sector_ret_5d, formatSignedPct(row.sector_ret_5d), signedTwClass],
   ];
 
   document.getElementById('rotation-drawer-title').textContent = row.sector_theme || '板塊明細';
@@ -1786,8 +1798,8 @@ function openRotationDrawer(row) {
   statusEl.textContent = status;
   statusEl.className = `rotation-status-badge ${rotationStatusClass(status)}`;
 
-  document.getElementById('rotation-drawer-metrics').innerHTML = metrics.map(([label, raw, text]) =>
-    `<div class="rotation-metric"><span>${label}</span><span class="${signedClass(raw)}">${text}</span></div>`
+  document.getElementById('rotation-drawer-metrics').innerHTML = metrics.map(([label, raw, text, clsFn]) =>
+    `<div class="rotation-metric"><span>${label}</span><span class="${clsFn(raw)}">${text}</span></div>`
   ).join('');
 
   const tbody = document.getElementById('rotation-drawer-stocks');
@@ -1797,8 +1809,8 @@ function openRotationDrawer(row) {
     <tr>
       <td class="code-col">${escapeHtml(stock.stock_id || (stock.ticker || '').replace(/\.(TW|TWO)$/, ''))}</td>
       <td class="name-col">${escapeHtml(stock.name || '—')}</td>
-      <td class="${signedClass(stock.day_return)}">${stock.price != null ? (Number.isInteger(stock.price) ? stock.price : stock.price.toFixed(2)) : '—'}</td>
-      <td class="${signedClass(stock.day_return)}">${formatSignedPct(stock.day_return)}</td>
+      <td class="${signedTwClass(stock.day_return)}">${stock.price != null ? (Number.isInteger(stock.price) ? stock.price : stock.price.toFixed(2)) : '—'}</td>
+      <td class="${signedTwClass(stock.day_return)}">${formatSignedPct(stock.day_return)}</td>
       <td class="${signedClass(stock.net_1d_yi)}">${formatYi(stock.net_1d_yi)}</td>
     </tr>
   `).join('');

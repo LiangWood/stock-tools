@@ -19,6 +19,7 @@ ENV/
 # Cache & runtime data
 # data/fund_cache.json  ← 保留讓 GitHub Actions 可讀取基本面快取
 data/tickers_cache.json
+data/tw_industry_cache.json
 
 # IDE & editor
 .vscode/

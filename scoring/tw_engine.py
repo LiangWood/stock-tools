@@ -15,6 +15,7 @@ import pandas as pd
 from scoring.engine import calculate_rsi, _linear_slope, _breakout_score
 from scoring.screener import apply_hard_filters, compute_scores, generate_reason, load_config
 from data.chips_cache import load_chips_history
+from data.tw_industry import get_industry_map
 
 _CONFIG_PATH = Path(__file__).parent / "config.json"
 _SECTOR_FLOW_WEIGHT = 0.15
@@ -45,6 +46,11 @@ _STOCK_TO_SECTOR = {
     for sector, codes in _TW_SECTOR_GROUPS.items()
     for code in codes
 }
+
+
+def _sector_for_code(code: str) -> str | None:
+    """個股板塊歸屬：優先採用主題式概念股清單，查無則退回證交所/櫃買中心官方產業別。"""
+    return _STOCK_TO_SECTOR.get(code) or get_industry_map().get(code)
 
 
 def _ema(series: pd.Series, span: int) -> pd.Series:
@@ -241,7 +247,7 @@ def compute_tw_sector_rotation(ticker_data: dict, history: dict | None = None) -
         if not d:
             continue
         code = ticker.split(".")[0]
-        sector = _STOCK_TO_SECTOR.get(code)
+        sector = _sector_for_code(code)
         if not sector:
             continue
         price = float(d.get("price") or 0.0)
@@ -328,7 +334,7 @@ def _attach_sector_rotation(df: pd.DataFrame, ticker_data: dict) -> pd.DataFrame
     df = df.copy()
 
     def _sector(code: str) -> str | None:
-        return _STOCK_TO_SECTOR.get(str(code).split(".")[0])
+        return _sector_for_code(str(code).split(".")[0])
 
     df["sector_theme"] = df["ticker"].map(_sector)
     df["sector_flow_status"] = df["sector_theme"].map(lambda s: sector_stats.get(s, {}).get("sector_flow_status") if s else None)
