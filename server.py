@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from data.fetcher import fetch_all
 from data.binance_fetcher import fetch_crypto_all, fetch_crypto_ticker_map
+from data.bybit_fetcher import fetch_supplement_ohlcv, load_supplement_tickers
 from data.twse_fetcher import fetch_tw_all
 from data.tw_industry import refresh_industry_map_if_stale
 from data.universe import get_combined_tickers, get_nasdaq100_tickers, get_sp500_tickers
@@ -480,6 +481,138 @@ class _BinanceStream:
 
 # 全域 Binance stream 實例
 _binance_stream = _BinanceStream()
+
+
+class _BybitStream:
+    """
+    Bybit WebSocket 即時 ticker 串流，補充 Binance 未上架的幣種。
+
+    訂閱 supplement_tickers.json 裡設定的幣種（tickers.{SYMBOL}）。
+    斷線自動重連（指數退避，最長 60 秒）；斷線期間保留上次快取。
+
+    公開介面與 _BinanceStream 一致：
+      .get_ticker(symbol) → dict | None   # {price, day_return, quote_volume, volume}
+      .get_tickers()      → dict          # 全量快照
+      .ready              → bool
+    """
+
+    _WS_URI = "wss://stream.bybit.com/v5/public/spot"
+
+    def __init__(self) -> None:
+        self._lock    = threading.Lock()
+        self._cache:  dict[str, dict] = {}
+        self._ready   = False
+        self._active  = False
+        self._symbols: list[str] = []
+        self._thread: threading.Thread | None = None
+
+    # ── public ────────────────────────────────────────────────
+
+    def start(self) -> None:
+        tickers = load_supplement_tickers()
+        self._symbols = [t["symbol"] for t in tickers]
+        if not self._symbols:
+            logger.info("BybitStream: no supplement tickers configured, skipping")
+            self._ready = True
+            return
+        if self._thread and self._thread.is_alive():
+            return
+        self._active = True
+        self._thread = threading.Thread(target=self._run_thread, daemon=True, name="bybit-stream")
+        self._thread.start()
+        logger.info("BybitStream started (%d symbols)", len(self._symbols))
+
+    def stop(self) -> None:
+        self._active = False
+
+    @property
+    def ready(self) -> bool:
+        return self._ready
+
+    def get_ticker(self, symbol: str) -> dict | None:
+        with self._lock:
+            return dict(self._cache[symbol]) if symbol in self._cache else None
+
+    def get_tickers(self) -> dict:
+        with self._lock:
+            return dict(self._cache)
+
+    # ── internal ──────────────────────────────────────────────
+
+    def _run_thread(self) -> None:
+        import asyncio
+        asyncio.run(self._run_async())
+
+    async def _run_async(self) -> None:
+        import asyncio
+        delay = 5
+        while self._active:
+            try:
+                await self._connect_and_stream()
+                delay = 5
+            except Exception as exc:
+                logger.debug("BybitStream session ended (%s), retry in %ds", exc, delay)
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 60)
+
+    async def _connect_and_stream(self) -> None:
+        import asyncio, json as _json
+        import websockets
+
+        async with websockets.connect(
+            self._WS_URI,
+            ping_interval=None,   # Bybit 用 op:ping/pong，不用 ws 層 ping
+            ping_timeout=30,
+            close_timeout=10,
+        ) as ws:
+            # 訂閱所有補充幣種的 ticker 頻道
+            await ws.send(_json.dumps({
+                "op": "subscribe",
+                "args": [f"tickers.{s}" for s in self._symbols],
+            }))
+            logger.info("BybitStream subscribed: %s", self._symbols)
+
+            last_ping = asyncio.get_event_loop().time()
+
+            async for raw in ws:
+                if not self._active:
+                    break
+
+                # 每 20 秒送一次 heartbeat（Bybit 規格）
+                now = asyncio.get_event_loop().time()
+                if now - last_ping > 20:
+                    await ws.send(_json.dumps({"op": "ping"}))
+                    last_ping = now
+
+                try:
+                    msg = _json.loads(raw)
+                except Exception:
+                    continue
+
+                # 略過非 ticker 訊息（subscribe ack、pong 等）
+                if not str(msg.get("topic", "")).startswith("tickers."):
+                    continue
+
+                data = msg.get("data", {})
+                symbol = data.get("symbol")
+                if not symbol:
+                    continue
+
+                # price24hPcnt 是小數比例（0.0698 = 6.98%），不需 /100
+                with self._lock:
+                    self._cache[symbol] = {
+                        "price":        _safe_float(data.get("lastPrice")),
+                        "day_return":   _safe_float(data.get("price24hPcnt")),
+                        "quote_volume": _safe_float(data.get("turnover24h")),
+                        "volume":       _safe_float(data.get("volume24h")),
+                    }
+                    if not self._ready and len(self._cache) >= len(self._symbols):
+                        self._ready = True
+                        logger.info("BybitStream ready (%d symbols cached)", len(self._cache))
+
+
+# 全域 Bybit stream 實例（補充非 Binance 幣種）
+_bybit_stream = _BybitStream()
 
 # Fear & Greed 日線快取（每日更新一次，避免 SSE 每 10 秒重打）
 _fng_cache: dict = {}   # {value, updated_date}
@@ -1647,6 +1780,11 @@ def _fetch_worker(universe: str):
                 _state["progress"]              = "完成"
         elif universe == "crypto":
             raw = fetch_crypto_all(progress_callback=progress)
+            # 合併 Bybit 補充幣種（Binance 未上架，如 HYPE）
+            supplement = fetch_supplement_ohlcv()
+            if supplement:
+                raw = {**raw, **supplement}   # Binance 優先；supplement 填補空缺
+                logger.info("Supplement tickers merged: %s", list(supplement.keys()))
             with _lock:
                 _state["progress"] = "計算加密貨幣 RS Rating…"
             crypto_rs_df = compute_crypto_rs_scores(raw)
@@ -1853,7 +1991,8 @@ class Handler(BaseHTTPRequestHandler):
                             scores: list[dict] = []
                             if _binance_stream.ready:
                                 try:
-                                    tickers = _binance_stream.get_tickers()
+                                    # Binance 優先；Bybit 補充幣種填補空缺
+                                    tickers = {**_bybit_stream.get_tickers(), **_binance_stream.get_tickers()}
                                     new_scores, updated_ohlcv = _refresh_crypto_live_scores(tickers)
                                     scores = new_scores
                                     if updated_ohlcv:
@@ -2228,6 +2367,7 @@ def main():
     _load_fund_cache()       # 啟動時載入今日基本面快取
     _taifex_stream.start()  # 啟動 TAIFEX MIS SockJS 即時串流
     _binance_stream.start() # 啟動 Binance WebSocket 即時串流
+    _bybit_stream.start()   # 啟動 Bybit WebSocket（補充非 Binance 幣種）
     server = ThreadingHTTPServer(("localhost", PORT), Handler)
     url = f"http://localhost:{PORT}"
     print(f"  動能篩選器  →  {url}")
