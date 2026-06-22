@@ -1315,6 +1315,49 @@ td.signal-cell {
   text-align: center;
 }
 
+/* ── Shift+Drag 量測工具 ── */
+#measure-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  cursor: crosshair;
+}
+#measure-sel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  background: linear-gradient(to bottom,
+    rgba(180, 190, 210, 0.08) 0%,
+    rgba(180, 190, 210, 0.20) 50%,
+    rgba(180, 190, 210, 0.08) 100%
+  );
+  border-left:  1px dashed rgba(180, 200, 255, 0.6);
+  border-right: 1px dashed rgba(180, 200, 255, 0.6);
+  pointer-events: none;
+}
+#measure-tip {
+  position: absolute;
+  display: none;
+  background: rgba(10,20,60,0.93);
+  border: 1px solid rgba(59,130,246,0.5);
+  border-radius: 7px;
+  padding: 9px 14px;
+  white-space: nowrap;
+  pointer-events: none;
+  color: #eef4ff;
+  font-family: var(--mono);
+  line-height: 1.65;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.28);
+}
+.mt-r1 { font-size: 14px; font-weight: 600; }
+.mt-r1.up   { color: #22c55e; }
+.mt-r1.down { color: #ef4444; }
+.mt-vol { color: rgba(220,232,255,0.86); margin-left: 10px; font-size: 12px; font-weight: 400; }
+.mt-r2, .mt-r3 { font-size: 12px; color: rgba(220,232,255,0.82); }
+
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    LOADING OVERLAY（列表內，百分比進度條版）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
@@ -1535,9 +1578,9 @@ td.signal-cell {
         <div class="chart-ctrl-group">
 
           <button class="ctrl" id="c-6mo"  data-period="6mo">6M</button>
-          <button class="ctrl" id="c-1y"   data-period="1y">1Y</button>
+          <button class="ctrl on" id="c-1y"   data-period="1y">1Y</button>
           <button class="ctrl" id="c-5y"   data-period="5y">5Y</button>
-          <button class="ctrl on" id="c-max" data-period="max">全部</button>
+          <button class="ctrl" id="c-max" data-period="max">全部</button>
           <div class="ctrl-sep"></div>
           <button class="ctrl on"  id="c-day">日K</button>
           <button class="ctrl"     id="c-week">週K</button>
@@ -1552,6 +1595,10 @@ td.signal-cell {
       <button id="close-chart-btn" title="關閉圖表">✕</button>
       <div id="chart-area">
         <div id="chart-mount"></div>
+        <div id="measure-layer">
+          <div id="measure-sel"></div>
+          <div id="measure-tip"></div>
+        </div>
         <div id="chart-placeholder">
           <div class="ph-icon">📈</div>
           <div class="ph-text">點選左側個股查看走勢</div>
@@ -1664,6 +1711,7 @@ const TW_RS_COLS = [
   { key:'price',      label:'PRICE',    w:'82px',  align:'right',  fmt:v=>v!=null?parseFloat(v.toFixed(2)).toString():'—' },
   { key:'_change',    label:'漲跌',     w:'68px',  align:'right',  cls:'change-col', fmt:v=>'—' },
   { key:'day_return', label:'當日%',    w:'68px',  align:'right',  cls:'pct',        fmt:pct },
+  { key:'ret_20d',    label:'近月%',    w:'68px',  align:'right',  cls:'pct',        fmt:pct },
   { key:'q1_pct',     label:'Q1(3M)',   w:'76px',  align:'right',  cls:'pct',        fmt:pct },
   { key:'q2_pct',     label:'Q2(3-6M)', w:'82px',  align:'right',  cls:'pct',        fmt:pct },
   { key:'q3_pct',     label:'Q3(6-9M)', w:'82px',  align:'right',  cls:'pct',        fmt:pct },
@@ -1861,13 +1909,14 @@ const S = {
   selectedTicker:  null,
   ohlcvData:       null,
   period:          'D',
-  historyPeriod:   'max',
+  historyPeriod:   '1y',
   strategyMode:    'rs',
   strategyLayers:  { technical: false, fundamental: false },
   twView:          'stock',   // 台股視圖：'stock' | 'breakout' | 'early'
   twStrategy:      'rs',      // 台股主表策略：'rs' | 'chips' | 'confluence'
   chipsFilter:     false,
   ema:             { 10: false, 20: false, 50: false, 120: false, 200: false },
+  chartFitAll:     false,
 };
 
 let pollTimer    = null;
@@ -2600,7 +2649,13 @@ function renderChart() {
     emaSeries[span] = s;
   });
 
-  lwChart.timeScale().fitContent();
+  const _total = candles.length;
+  if (!S.chartFitAll && _total > 90) {
+    lwChart.timeScale().setVisibleLogicalRange({ from: _total - 90, to: _total + 3 });
+  } else {
+    lwChart.timeScale().fitContent();
+  }
+  S.chartFitAll = false;
 
   // Live price display: prefer exchange quote row so it matches the ranked table.
   const last     = candles[candles.length - 1];
@@ -3843,6 +3898,7 @@ async function renderTwEarlyStageView() {
   const btn = document.getElementById(id);
   btn.addEventListener('click', () => {
     S.historyPeriod = btn.dataset.period;
+    S.chartFitAll = true;
     document.querySelectorAll('[data-period]').forEach(b => b.classList.remove('on'));
     btn.classList.add('on');
     if (S.selectedTicker) pickTicker(S.selectedTicker, S.historyPeriod);
@@ -3852,6 +3908,7 @@ async function renderTwEarlyStageView() {
 // Candlestick period buttons
 document.getElementById('c-day').addEventListener('click', () => {
   S.period = 'D';
+  S.chartFitAll = true;
   document.getElementById('c-day').classList.add('on');
   document.getElementById('c-week').classList.remove('on');
   renderChart();
@@ -3859,6 +3916,7 @@ document.getElementById('c-day').addEventListener('click', () => {
 
 document.getElementById('c-week').addEventListener('click', () => {
   S.period = 'W';
+  S.chartFitAll = true;
   document.getElementById('c-week').classList.add('on');
   document.getElementById('c-day').classList.remove('on');
   renderChart();
@@ -3994,6 +4052,228 @@ function updateStickyLefts() {
 
   divider.addEventListener('dblclick', () => {
     chartPanel.style.width = DEFAULT_W + 'px';
+  });
+})();
+
+// ── Shift+Drag 量測工具 ──────────────────────────────────────────────────────
+(function() {
+  const layer = document.getElementById('measure-layer');
+  const selEl = document.getElementById('measure-sel');
+  const tipEl = document.getElementById('measure-tip');
+  let state         = 0; // 0: idle, 1: selecting, 2: locked
+  let startLogical  = null;
+  let startClientX  = null;
+  let activeRange   = null;
+  let suppressClick = false;
+
+  function currentCandles() {
+    if (!S.ohlcvData) return [];
+    const raw = ohlcvToCandles(S.ohlcvData);
+    return S.period === 'W' ? toWeekly(raw) : raw;
+  }
+
+  function xToLogical(clientX) {
+    if (!lwChart) return null;
+    return lwChart.timeScale().coordinateToLogical(clientX - layer.getBoundingClientRect().left);
+  }
+
+  function logicalToX(idx) {
+    if (!lwChart) return null;
+    const x = lwChart.timeScale().logicalToCoordinate(idx);
+    return x == null ? null : x;
+  }
+
+  function fmtVol(v) {
+    if (v >= 1e9) return (v / 1e9).toFixed(2) + 'B';
+    if (v >= 1e6) return (v / 1e6).toFixed(2) + 'M';
+    if (v >= 1e3) return (v / 1e3).toFixed(2) + 'K';
+    return Math.round(v).toLocaleString();
+  }
+
+  function fmtPrice(v) {
+    return v >= 1000
+      ? v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : v.toFixed(2);
+  }
+
+  function timeToSec(t) {
+    if (typeof t === 'number') return t > 1e12 ? t / 1000 : t;
+    if (typeof t === 'string') {
+      const ms = /^\d{4}-\d{2}-\d{2}$/.test(t)
+        ? Date.UTC(...t.split('-').map((n, i) => Number(n) - (i === 1 ? 1 : 0)))
+        : Date.parse(t);
+      return Number.isFinite(ms) ? ms / 1000 : null;
+    }
+    if (t && typeof t === 'object' && 'year' in t && 'month' in t && 'day' in t) {
+      return Date.UTC(t.year, t.month - 1, t.day) / 1000;
+    }
+    return null;
+  }
+
+  function selectedRange(endClientX) {
+    if (!lwChart || startLogical == null) return null;
+    const candles = currentCandles();
+    if (!candles.length) return null;
+
+    const endRaw = xToLogical(endClientX);
+    if (endRaw == null || !Number.isFinite(endRaw)) return null;
+
+    const clamp = v => Math.max(0, Math.min(Math.round(v), candles.length - 1));
+    const i1 = clamp(Math.min(startLogical, endRaw));
+    const i2 = clamp(Math.max(startLogical, endRaw));
+    const lr = layer.getBoundingClientRect();
+
+    return { candles, i1, i2, lr };
+  }
+
+  function updateSelection(endClientX) {
+    if (startLogical == null || !lwChart) return null;
+
+    const lr = layer.getBoundingClientRect();
+    const clampX = x => Math.max(0, Math.min(x, layer.clientWidth));
+    const rawStartX = logicalToX(startLogical);
+    const fallbackStartX = startClientX == null ? endClientX - lr.left : startClientX - lr.left;
+    const startX = Number.isFinite(rawStartX) ? clampX(rawStartX) : clampX(fallbackStartX);
+    const endX = clampX(endClientX - lr.left);
+    const left = Math.min(startX, endX);
+    const width = Math.abs(endX - startX);
+
+    if (Number.isFinite(left) && Number.isFinite(width)) {
+      selEl.style.left = left + 'px';
+      selEl.style.width = width + 'px';
+    }
+
+    const range = selectedRange(endClientX);
+    if (range) activeRange = range;
+    return activeRange;
+  }
+
+  function showStats(endClientX, endClientY) {
+    const range = selectedRange(endClientX) || activeRange;
+    if (!range) return false;
+    const { candles, i1, i2, lr } = range;
+
+    const slice    = candles.slice(i1, i2 + 1);
+    if (!slice.length) return false;
+    const barCount = slice.length;
+    const openP    = slice[0].open;
+    const closeP   = slice[slice.length - 1].close;
+    const diff     = closeP - openP;
+    const pct      = diff / openP * 100;
+    const totalVol = slice.reduce((s, c) => s + (c._vol || 0), 0);
+    const avgVol   = totalVol / barCount;
+    const isUp     = diff >= 0;
+
+    // 時間跨度（從時間戳推算，日K/週K/加密貨幣都適用）
+    const t1      = timeToSec(slice[0].time);
+    const t2      = timeToSec(slice[slice.length - 1].time);
+    const durSec  = t1 == null || t2 == null ? 0 : Math.abs(t2 - t1);
+    const durDays = Math.floor(durSec / 86400);
+    const durHrs  = Math.floor((durSec % 86400) / 3600);
+    const timeStr = durDays > 0
+      ? (durHrs > 0 ? `${barCount}根K棒, ${durDays}日 ${durHrs}小時` : `${barCount}根K棒, ${durDays}日`)
+      : `${barCount}根K棒, ${durHrs}小時`;
+
+    const sign = isUp ? '+' : '-';
+    tipEl.innerHTML =
+      `<div class="mt-r1 ${isUp ? 'up' : 'down'}">${sign}${fmtPrice(Math.abs(diff))} (${isUp?'+':''}${pct.toFixed(2)}%)<span class="mt-vol">總量 ${fmtVol(totalVol)}</span></div>` +
+      `<div class="mt-r2">${timeStr}</div>` +
+      `<div class="mt-r3">平均成交量 ${fmtVol(avgVol)}</div>`;
+    tipEl.style.display = 'block';
+
+    // tooltip 位置
+    const tipW = tipEl.offsetWidth || 230;
+    let tx = endClientX - lr.left + 16;
+    let ty = endClientY - lr.top  - 70;
+    if (tx + tipW > layer.clientWidth - 8) tx = endClientX - lr.left - tipW - 10;
+    if (ty < 4) ty = 4;
+    tipEl.style.left    = tx + 'px';
+    tipEl.style.top     = ty + 'px';
+    return true;
+  }
+
+  function clear() {
+    state = 0;
+    startLogical = null;
+    startClientX = null;
+    activeRange = null;
+    selEl.style.left  = '0';
+    selEl.style.width = '0';
+    tipEl.style.display = 'none';
+    setMeasureLayerEnabled(false);
+  }
+
+  function setMeasureLayerEnabled(enabled) {
+    layer.style.pointerEvents = enabled ? 'all' : 'none';
+  }
+
+  function isInsideLayer(clientX, clientY) {
+    const r = layer.getBoundingClientRect();
+    return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+  }
+
+  function beginSelecting(clientX, clientY) {
+    if (!lwChart || !isInsideLayer(clientX, clientY)) return false;
+    const logical = xToLogical(clientX);
+    if (logical == null || !Number.isFinite(logical)) return false;
+    clear();
+    state = 1;
+    startLogical = logical;
+    startClientX = clientX;
+    setMeasureLayerEnabled(true);
+    updateSelection(clientX);
+    return true;
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      clear();
+    }
+  });
+
+  document.addEventListener('mousedown', e => {
+    if (!e.shiftKey || state !== 0 || !lwChart) return;
+    if (!beginSelecting(e.clientX, e.clientY)) return;
+    suppressClick = true;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+
+  document.addEventListener('click', e => {
+    if (!suppressClick) return;
+    suppressClick = false;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+
+  layer.addEventListener('click', e => {
+    if (state === 1) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (showStats(e.clientX, e.clientY)) {
+        state = 2;
+      } else {
+        clear();
+      }
+      return;
+    }
+
+    if (state === 2) {
+      clear();
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
+
+  layer.addEventListener('mousedown', e => {
+    if (state === 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (state !== 1) return;
+    updateSelection(e.clientX);
   });
 })();
 </script>
