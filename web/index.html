@@ -405,7 +405,8 @@ html, body {
 }
 
 .strategy-btn,
-.tw-strategy-btn {
+.tw-strategy-btn,
+.tw-filter-btn {
   padding: 5px 14px;
   min-width: 72px;
   border-radius: 18px;
@@ -421,18 +422,21 @@ html, body {
 }
 
 .strategy-btn:hover,
-.tw-strategy-btn:hover {
+.tw-strategy-btn:hover,
+.tw-filter-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
 
 .strategy-btn.active,
-.tw-strategy-btn.active {
+.tw-strategy-btn.active,
+.tw-filter-btn.active {
   background: var(--accent-lo);
   border-color: var(--accent);
   color: var(--accent);
   box-shadow: inset 0 0 0 1px rgba(0, 229, 207, 0.14);
 }
+
 
 .strategy-btn.base {
   border-color: var(--accent);
@@ -782,7 +786,8 @@ td.breakout-cell {
 .view-btn:hover { border-color: var(--accent); color: var(--accent); }
 .view-btn.active { background: var(--accent-lo); border-color: var(--accent); color: var(--accent); }
 
-.tw-strategy-btn:disabled {
+.tw-strategy-btn:disabled,
+.tw-filter-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
   pointer-events: none;
@@ -1449,7 +1454,7 @@ td.signal-cell {
         <!-- 台股策略（右側，只在主表顯示） -->
         <div id="tw-strategy-tabs" style="display:none">
           <button class="tw-strategy-btn active" data-strategy="rs">RS排名</button>
-          <button class="tw-strategy-btn" data-strategy="chips">籌碼加乘</button>
+          <button class="tw-filter-btn" data-strategy="chips">籌碼加乘</button>
           <button class="tw-strategy-btn" data-strategy="rotation">板塊輪動</button>
           <button class="tw-strategy-btn" data-strategy="confluence">RS籌碼共振</button>
         </div>
@@ -1861,6 +1866,7 @@ const S = {
   strategyLayers:  { technical: false, fundamental: false },
   twView:          'stock',   // 台股視圖：'stock' | 'breakout' | 'early'
   twStrategy:      'rs',      // 台股主表策略：'rs' | 'chips' | 'confluence'
+  chipsFilter:     false,
   ema:             { 10: false, 20: false, 50: false, 120: false, 200: false },
 };
 
@@ -2673,7 +2679,7 @@ function setStatus(cls, text) {
 function lockUI(lock) {
   document.getElementById('refresh-btn').disabled = lock;
   document.querySelectorAll('.tab').forEach(b => { b.disabled = lock; });
-  document.querySelectorAll('.strategy-btn, .tw-strategy-btn').forEach(b => { b.disabled = lock; });
+  document.querySelectorAll('.strategy-btn, .tw-strategy-btn, .tw-filter-btn').forEach(b => { b.disabled = lock; });
 }
 
 // ── Progress animation (lerp) ──
@@ -3206,7 +3212,17 @@ function updateStrategyTabs() {
     twStratTabs.style.display = isTw ? 'flex' : 'none';
     const inObsView = isTw && S.twView !== 'stock';
     twStratTabs.querySelectorAll('.tw-strategy-btn').forEach(b => {
-      b.classList.toggle('active', !inObsView && b.dataset.strategy === S.twStrategy);
+      const s = b.dataset.strategy;
+      // RS排名：rs 或 confluence 時都亮（confluence = RS + 籌碼共振）
+      const isActive = s === 'rs'
+        ? (S.twStrategy === 'rs' || S.twStrategy === 'confluence')
+        : s === S.twStrategy;
+      b.classList.toggle('active', !inObsView && isActive);
+      b.disabled = inObsView;
+    });
+    twStratTabs.querySelectorAll('.tw-filter-btn').forEach(b => {
+      // 籌碼加乘：chipsFilter 開啟 或 confluence 時都亮
+      b.classList.toggle('active', S.chipsFilter || S.twStrategy === 'confluence');
       b.disabled = inObsView;
     });
   }
@@ -3578,6 +3594,17 @@ document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     if (btn.disabled) return;
     S.twStrategy = btn.dataset.strategy;
+    S.chipsFilter = false;
+    updateStrategyTabs();
+    loadTwStrategyMulti();
+  });
+});
+
+document.querySelectorAll('#tw-strategy-tabs .tw-filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.disabled) return;
+    S.twStrategy = 'rs';
+    S.chipsFilter = !S.chipsFilter;
     updateStrategyTabs();
     loadTwStrategyMulti();
   });
@@ -3592,7 +3619,14 @@ async function loadTwStrategyMulti() {
     const chipsUrl = IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-scores';
     const rotationUrl = IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-sector-rotation';
 
-    if (S.twStrategy === 'chips') {
+    if (S.twStrategy === 'rs' && S.chipsFilter) {
+      const [rsD, chipsD] = await Promise.all([
+        fetch(rsUrl).then(r => r.json()),
+        fetch(chipsUrl).then(r => r.json()),
+      ]);
+      const chipsSet = new Set((chipsD.scores || []).map(r => r.ticker));
+      scores = (rsD.scores || []).filter(r => chipsSet.has(r.ticker));
+    } else if (S.twStrategy === 'chips') {
       const chipsD = await (await fetch(chipsUrl)).json();
       scores = chipsD.scores || [];
     } else if (S.twStrategy === 'rotation') {

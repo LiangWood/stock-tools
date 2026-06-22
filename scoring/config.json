@@ -1,7 +1,7 @@
 {
   "_comment": "台股籌碼選股策略設定檔 — 修改此檔案即可調整策略，不需要動程式碼",
-  "_version": "2.0",
-  "_last_updated": "2026-06-04",
+  "_version": "2.1",
+  "_last_updated": "2026-06-22",
   "strategy_name": "純籌碼法人布局策略",
   "description": "只使用籌碼面資訊評分：外資、投信、三大法人與融資變化。技術動能與價格漲幅只保留為 UI 輔助欄位，不進入分數。",
   "hard_filters": {
@@ -19,10 +19,10 @@
   },
   "scoring": {
     "fi_net": {
-      "weight": 0.20,
+      "weight": 0.25,
       "ascending": true,
       "label": "外資買賣超（元）",
-      "rationale": "外資是台股最大法人之一，買超代表外資資金流入。"
+      "rationale": "外資是台股最大法人之一，當日買超金額直接反映資金流入規模。"
     },
     "fi_consec_days": {
       "weight": 0.15,
@@ -31,16 +31,16 @@
       "rationale": "連續買超比單日買超更能代表有計畫的法人布局。"
     },
     "it_consec_days": {
-      "weight": 0.25,
-      "ascending": true,
-      "label": "投信連續買超天數",
-      "rationale": "投信連買通常代表基金持續建倉，是純籌碼策略的核心。"
-    },
-    "it_net": {
       "weight": 0.15,
       "ascending": true,
+      "label": "投信連續買超天數",
+      "rationale": "投信連買代表基金持續建倉；權重調降以避免大型股因法人輪動式進出而被低估。"
+    },
+    "it_net": {
+      "weight": 0.20,
+      "ascending": true,
       "label": "投信買賣超金額（元）",
-      "rationale": "投信買超金額補足連買天數的規模維度。"
+      "rationale": "投信當日買超金額，與外資金額同為偏重當日資金力道的核心指標。"
     },
     "inst_net": {
       "weight": 0.10,
@@ -56,8 +56,8 @@
     }
   },
   "output": {
-    "top_n": 50,
-    "_top_n_note": "回傳前 50 名候選名單。記住：這是候選清單，不是買單。",
+    "top_n": 100,
+    "_top_n_note": "回傳前 100 名候選名單。記住：這是候選清單，不是買單。",
     "columns": [
       "fi_net",
       "fi_consec_days",
