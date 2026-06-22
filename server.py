@@ -1987,9 +1987,10 @@ class Handler(BaseHTTPRequestHandler):
                             if fng:
                                 indices.append({"name": "貪婪指數", **fng})
 
-                            # ② RS 排名（只在 WebSocket 有資料且快取 OHLCV 存在時計算）
+                            # ② RS 排名（只在 WebSocket 有資料、且當前宇宙為 crypto 時計算）
+                            # 若宇宙不是 crypto，_state["ohlcv"] 內可能是台股資料，不能拿來算加密幣 RS
                             scores: list[dict] = []
-                            if _binance_stream.ready:
+                            if _binance_stream.ready and _state.get("universe") == "crypto":
                                 try:
                                     # Binance 優先；Bybit 補充幣種填補空缺
                                     tickers = {**_bybit_stream.get_tickers(), **_binance_stream.get_tickers()}

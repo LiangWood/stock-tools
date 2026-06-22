@@ -1450,8 +1450,8 @@ td.signal-cell {
         <div id="tw-strategy-tabs" style="display:none">
           <button class="tw-strategy-btn active" data-strategy="rs">RS排名</button>
           <button class="tw-strategy-btn" data-strategy="chips">籌碼加乘</button>
-          <button class="tw-strategy-btn" data-strategy="confluence">RS籌碼共振</button>
           <button class="tw-strategy-btn" data-strategy="rotation">板塊輪動</button>
+          <button class="tw-strategy-btn" data-strategy="confluence">RS籌碼共振</button>
         </div>
         <div id="crypto-strategy-tabs" style="display:none">
           <button class="tw-strategy-btn active" data-strategy="rs">RS排名</button>
@@ -1700,6 +1700,21 @@ const TW_ROTATION_COLS = [
   { key:'sector_flow_score',   label:'板塊分',   w:'100px', align:'right', cls:'score', fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
 ];
 
+const TW_CONFLUENCE_COLS = [
+  { key:'rank',                label:'RANK',    w:'52px',  align:'center', cls:'rank-cell',          fmt:v=>v??'—',  sticky:true },
+  { key:'ticker',              label:'標的',    w:'140px', align:'left',   cls:'ticker-cell',         fmt:v=>v||'—',  sticky:true, tw_merge_name:true },
+  { key:'price',               label:'PRICE',   w:'82px',  align:'right',  fmt:v=>v!=null?parseFloat(v.toFixed(2)).toString():'—' },
+  { key:'day_return',          label:'日%',     w:'68px',  align:'right',  cls:'pct',                 fmt:pct },
+  { key:'rs_score',            label:'RS分',    w:'72px',  align:'right',  cls:'rs-rating',           fmt:v=>v!=null?v.toFixed(1):'—' },
+  { key:'sector_theme',        label:'板塊',    w:'90px',  align:'center', cls:'sector-cell',         fmt:v=>v||'—' },
+  { key:'sector_flow_status',  label:'板塊資金',w:'76px',  align:'center', cls:'sector-flow',         fmt:v=>v||'—' },
+  { key:'sector_flow_score',   label:'板塊分',  w:'70px',  align:'right',  cls:'sector-flow-score',   fmt:v=>v!=null?v.toFixed(1):'—' },
+  { key:'fi_net',              label:'外資(張)',w:'82px',  align:'right',  cls:'chips',               fmt:v=>v!=null?Math.round(v/1000).toLocaleString():'—' },
+  { key:'it_net',              label:'投信(張)',w:'82px',  align:'right',  cls:'chips',               fmt:v=>v!=null?Math.round(v/1000).toLocaleString():'—' },
+  { key:'tw_score',            label:'籌碼分',  w:'72px',  align:'right',  cls:'chips',               fmt:v=>v!=null?v.toFixed(1):'—' },
+  { key:'confluence_score',    label:'共振分',  w:'86px',  align:'right',  cls:'score',               fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
+];
+
 const CRYPTO_RS_COLS = [
   { key:'rank',         label:'RANK',      w:'60px',  align:'center', cls:'rank-cell', fmt:v=>v??'—', sticky:true },
   { key:'ticker',       label:'SYMBOL',    w:'110px', align:'left',   cls:'ticker-cell', fmt:v=>v||'—', sticky:true },
@@ -1901,6 +1916,7 @@ function cols() {
   if (S.universe === 'crypto') return CRYPTO_RS_COLS;
   if (S.universe === 'tw') {
     if (S.twStrategy === 'rotation') return TW_ROTATION_COLS;
+    if (S.twStrategy === 'confluence') return TW_CONFLUENCE_COLS;
     return S.twStrategy === 'chips' ? TW_COLS : TW_RS_COLS;
   }
   if (S.strategyMode === 'rtf') return US_RTF_COLS;
@@ -1910,6 +1926,7 @@ function scoreKey() {
   if (S.universe === 'crypto') return 'rs_rating';
   if (S.universe === 'tw') {
     if (S.twStrategy === 'rotation') return 'sector_flow_score';
+    if (S.twStrategy === 'confluence') return 'confluence_score';
     return S.twStrategy === 'chips' ? 'tw_score' : 'rs_score';
   }
   if (S.strategyMode === 'rtf') return 'rtf_score';
@@ -3604,10 +3621,37 @@ async function loadTwStrategyMulti() {
         scores.forEach((r, i) => r.rank = i + 1);
       }
     } else if (S.twStrategy === 'confluence') {
-      const rsD = await (await fetch(rsUrl)).json();
-      const chipsD = await (await fetch(chipsUrl)).json();
-      const chipsSet = new Set((chipsD.scores || []).map(r => r.ticker));
-      scores = (rsD.scores || []).filter(r => chipsSet.has(r.ticker));
+      const [rsD, chipsD] = await Promise.all([
+        fetch(rsUrl).then(r => r.json()),
+        fetch(chipsUrl).then(r => r.json()),
+      ]);
+      const chipsMap = new Map((chipsD.scores || []).map(r => [r.ticker, r]));
+      const allRs = rsD.scores || [];
+      const rsMax  = Math.max(...allRs.map(r => r.rs_score || 0), 1);
+      const chipsMax = Math.max(...(chipsD.scores || []).map(r => r.tw_score || 0), 1);
+      scores = allRs
+        .filter(r => chipsMap.has(r.ticker))
+        .map(r => {
+          const cr = chipsMap.get(r.ticker);
+          const rsNorm     = (r.rs_score           || 0) / rsMax    * 30;
+          const chipsNorm  = (cr.tw_score          || 0) / chipsMax * 40;
+          const sectorNorm = (cr.sector_flow_score || 0) / 100      * 30;
+          return {
+            ...r,
+            sector_theme:        cr.sector_theme,
+            sector_flow_status:  cr.sector_flow_status,
+            sector_flow_score:   cr.sector_flow_score,
+            tw_score:            cr.tw_score,
+            fi_net:              cr.fi_net,
+            it_net:              cr.it_net,
+            fi_consec_days:      cr.fi_consec_days,
+            it_consec_days:      cr.it_consec_days,
+            inst_net:            cr.inst_net,
+            confluence_score: rsNorm + chipsNorm + sectorNorm,
+          };
+        })
+        .sort((a, b) => b.confluence_score - a.confluence_score);
+      scores.forEach((r, i) => { r.rank = i + 1; });
     } else {
       const rsD = await (await fetch(rsUrl)).json();
       scores = rsD.scores || [];
