@@ -3710,36 +3710,31 @@ async function loadTwStrategyMulti() {
         scores.forEach((r, i) => r.rank = i + 1);
       }
     } else if (S.twStrategy === 'confluence') {
-      const [rsD, chipsD] = await Promise.all([
-        fetch(rsUrl).then(r => r.json()),
+      const rsFullUrl = IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores-full';
+      const [rsFullD, chipsD] = await Promise.all([
+        fetch(rsFullUrl).then(r => r.json()),
         fetch(chipsUrl).then(r => r.json()),
       ]);
-      const chipsMap = new Map((chipsD.scores || []).map(r => [r.ticker, r]));
-      const allRs = rsD.scores || [];
-      const rsMax  = Math.max(...allRs.map(r => r.rs_score || 0), 1);
+      const allRsFull = rsFullD.scores || [];
+      const rsMap    = new Map(allRsFull.map(r => [r.ticker, r]));
+      const rsMax    = Math.max(...allRsFull.map(r => r.rs_score || 0), 1);
       const chipsMax = Math.max(...(chipsD.scores || []).map(r => r.tw_score || 0), 1);
-      scores = allRs
-        .filter(r => chipsMap.has(r.ticker))
-        .map(r => {
-          const cr = chipsMap.get(r.ticker);
-          const rsNorm     = (r.rs_score           || 0) / rsMax    * 30;
-          const chipsNorm  = (cr.tw_score          || 0) / chipsMax * 40;
-          const sectorNorm = (cr.sector_flow_score || 0) / 100      * 30;
-          return {
-            ...r,
-            sector_theme:        cr.sector_theme,
-            sector_flow_status:  cr.sector_flow_status,
-            sector_flow_score:   cr.sector_flow_score,
-            tw_score:            cr.tw_score,
-            fi_net:              cr.fi_net,
-            it_net:              cr.it_net,
-            fi_consec_days:      cr.fi_consec_days,
-            it_consec_days:      cr.it_consec_days,
-            inst_net:            cr.inst_net,
-            confluence_score: rsNorm + chipsNorm + sectorNorm,
-          };
-        })
-        .sort((a, b) => b.confluence_score - a.confluence_score);
+      scores = (chipsD.scores || []).map(r => {
+        const rsRow = rsMap.get(r.ticker) || {};
+        const rsNorm     = (rsRow.rs_score          || 0) / rsMax    * 30;
+        const chipsNorm  = (r.tw_score              || 0) / chipsMax * 40;
+        const sectorNorm = (r.sector_flow_score     || 0) / 100      * 30;
+        return {
+          ...r,
+          rs_score:         rsRow.rs_score,
+          q1_pct:           rsRow.q1_pct,
+          q2_pct:           rsRow.q2_pct,
+          q3_pct:           rsRow.q3_pct,
+          q4_pct:           rsRow.q4_pct,
+          confluence_score: rsNorm + chipsNorm + sectorNorm,
+        };
+      })
+      .sort((a, b) => b.confluence_score - a.confluence_score);
       scores.forEach((r, i) => { r.rank = i + 1; });
     } else {
       const rsD = await (await fetch(rsUrl)).json();

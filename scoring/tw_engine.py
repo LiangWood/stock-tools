@@ -350,7 +350,7 @@ def _attach_sector_rotation(df: pd.DataFrame, ticker_data: dict) -> pd.DataFrame
     return df
 
 
-def compute_tw_rs_scores(ticker_data: dict) -> pd.DataFrame:
+def compute_tw_rs_scores(ticker_data: dict, top_n: int | None = 100) -> pd.DataFrame:
     """
     台股 RS Score（Minervini 方法）
     RS Score = Q1×50% + Q2×25% + Q3×15% + Q4×10%
@@ -426,12 +426,12 @@ def compute_tw_rs_scores(ticker_data: dict) -> pd.DataFrame:
     df.rename(columns={"q1_ret": "q1_pct", "q2_ret": "q2_pct",
                         "q3_ret": "q3_pct", "q4_ret": "q4_pct"}, inplace=True)
 
-    result = (
-        df.drop(columns=[c for c in df.columns if c.startswith("_")])
-        .sort_values("rs_score", ascending=False)
-        .head(100)
-        .reset_index(drop=True)
+    result = df.drop(columns=[c for c in df.columns if c.startswith("_")]).sort_values(
+        "rs_score", ascending=False
     )
+    if top_n is not None:
+        result = result.head(top_n)
+    result = result.reset_index(drop=True)
     result["rank"] = range(1, len(result) + 1)
     return result
 

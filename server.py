@@ -1750,7 +1750,8 @@ def _fetch_worker(universe: str):
                 logger.warning("產業別快取更新失敗：%s", exc)
             with _lock:
                 _state["progress"] = "計算 RS Score…"
-            tw_rs_df = compute_tw_rs_scores(raw)
+            tw_rs_df_full = compute_tw_rs_scores(raw, top_n=None)  # 全市場，供共振使用
+            tw_rs_df = tw_rs_df_full.head(100)
             with _lock:
                 _state["progress"] = "計算籌碼分數…"
             scores_df = compute_tw_scores(raw)
@@ -1771,6 +1772,7 @@ def _fetch_worker(universe: str):
                 _state["status"]                = "done"
                 _state["scores"]                = _df_to_records(scores_df)
                 _state["tw_rs_scores"]          = _df_to_records(tw_rs_df)
+                _state["tw_rs_scores_full"]     = _df_to_records(tw_rs_df_full)
                 _state["tw_sector_rotation"]    = sector_rotation
                 _state["tw_breakout_candidates"] = _df_to_records(tw_bk_df)
                 _state["tw_early_stage"]        = _df_to_records(tw_early_df)
@@ -2083,6 +2085,16 @@ class Handler(BaseHTTPRequestHandler):
                         self._json(data)
                         return
                 self._json({"scores": tw_rs})
+
+            elif route == "/api/tw-rs-scores-full":
+                with _lock:
+                    tw_rs_full = _state.get("tw_rs_scores_full", [])
+                if not tw_rs_full:
+                    data = _read_static("tw_rs_scores.json")
+                    if data:
+                        self._json(data)
+                        return
+                self._json({"scores": tw_rs_full})
 
             elif route == "/api/tw-sector-rotation":
                 with _lock:
