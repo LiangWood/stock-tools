@@ -143,6 +143,33 @@ except Exception as e:
     save("tw_breakout",    {"candidates": [], "last_updated": now})
     save("tw_early_stage", {"candidates": [], "last_updated": now})
 
+# ── 大盤指數（靜態模式 header 用）────────────────────────────────────────────
+logger.info("=== 指數資料抓取 ===")
+try:
+    import yfinance as yf
+    from server import _fetch_tw_futures, _fetch_vixtwn
+
+    indices = []
+    df_twii = yf.Ticker("^TWII").history(period="2d", auto_adjust=True, raise_errors=False)
+    if df_twii is not None and not df_twii.empty:
+        last = float(df_twii["Close"].iloc[-1])
+        prev = float(df_twii["Close"].iloc[-2]) if len(df_twii) >= 2 else last
+        chg = last - prev
+        chg_pct = chg / prev * 100 if prev else 0.0
+        indices.append({"name": "加權指數", "price": round(last, 0),
+                        "change": round(chg, 2), "change_pct": round(chg_pct, 2)})
+    fut = _fetch_tw_futures()
+    if fut:
+        indices.append({"name": "台指期", **fut})
+    vix = _fetch_vixtwn()
+    if vix:
+        indices.append({"name": "恐慌指數", **vix})
+    save("indices", {"indices": indices, "last_updated": now})
+    logger.info("指數資料完成：%d 項", len(indices))
+except Exception as e:
+    logger.warning("指數資料抓取失敗：%s", e)
+    save("indices", {"indices": [], "last_updated": now})
+
 # ── meta ──────────────────────────────────────────────────────────────────────
 save("meta", {"last_updated": now, "generated_at": datetime.utcnow().isoformat() + "Z"})
 logger.info("=== 全部完成：%s ===", now)

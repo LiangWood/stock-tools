@@ -1947,7 +1947,7 @@ async function bootstrapStaticData() {
   lockUI(true);
   showOverlay('載入靜態資料…', 30);
   try {
-    await loadStaticScores();
+    await Promise.all([loadStaticScores(), fetchIndices()]);
     showOverlay('完成', 100);
     applyFilter(); renderHead(); renderBody();
     updateStrategyTabs();
@@ -3114,6 +3114,13 @@ async function fetchIndices() {
   const universe = requestedUniverse === 'tw' ? 'tw' : (requestedUniverse === 'crypto' ? 'crypto' : 'us');
 
   if (universe === 'tw') {
+    if (IS_STATIC) {
+      try {
+        const d = await fetch(`${STATIC_BASE}/indices.json`).then(r => r.json());
+        renderIndices(d.indices || []);
+      } catch(_) {}
+      return;
+    }
     // 台股：啟動 SSE 串流（5 秒推一次）
     _indicesSSE.start('tw');
     return;
