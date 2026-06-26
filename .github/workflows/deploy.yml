@@ -11,7 +11,7 @@ on:
         required: false
 
 permissions:
-  contents: write       # 允許 commit 回 data/*.json
+  contents: read        # 不再需要 commit 回 repo
   pages: write          # 允許寫入 GitHub Pages
   id-token: write       # Pages 部署所需
 
@@ -28,45 +28,29 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4.2.2   # Node.js 24 compatible
+        uses: actions/checkout@v4.2.2
 
       - name: Setup Python 3.11
-        uses: actions/setup-python@v5.6.0   # Node.js 24 compatible
+        uses: actions/setup-python@v5.6.0
         with:
           python-version: '3.11'
           cache: 'pip'
 
       - name: Install dependencies
-        run: pip install -r requirements-ci.txt   # CI 版：排除 customtkinter/matplotlib/mcp 等 GUI 相依
+        run: pip install -r requirements-ci.txt
 
       - name: Generate static data
         run: python scripts/generate_static_data.py
 
-      - name: Commit data files
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config pull.rebase true
-          # 只 stage web/data，其他檔案（cache 等）不提交
-          git add web/data/
-          if git diff --staged --quiet; then
-            echo "No data changes, skipping commit"
-          else
-            git commit -m "chore: update stock data $(date -u '+%Y-%m-%d %H:%M UTC')"
-            # --autostash 自動暫存工作區剩餘變更，避免 unstaged changes 錯誤
-            git pull --rebase --autostash origin master
-            git push origin master
-          fi
-
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5
         with:
-          enablement: true   # 自動啟用 GitHub Pages（不需手動設定）
+          enablement: true
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: web/          # 部署 web/ 目錄
+          path: web/
 
       - name: Deploy to GitHub Pages
         id: deployment

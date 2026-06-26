@@ -36,3 +36,6 @@ data/tw_industry_cache.json
 # Logs
 *.log
 .vercel
+
+# GitHub Actions 產生的靜態資料（不追蹤，由 CI 直接部署）
+web/data/*.json
