@@ -1507,7 +1507,7 @@ def _compute_sector_metrics(scores_df) -> object:
     # 板塊內個股排名（rs_rating 降序）
     df["sector_rank"] = df.groupby("sector")["rs_rating"].rank(
         ascending=False, method="min"
-    ).astype(int)
+    ).fillna(0).astype(int)
     sector_count = df.groupby("sector")["ticker"].transform("count")
     df["sector_rank"] = df["sector_rank"].astype(str)   # 只顯示排名，不附 /N
 

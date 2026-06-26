@@ -143,6 +143,25 @@ except Exception as e:
     save("tw_breakout",    {"candidates": [], "last_updated": now})
     save("tw_early_stage", {"candidates": [], "last_updated": now})
 
+# ── 加密貨幣 ──────────────────────────────────────────────────────────────────
+logger.info("=== 加密貨幣資料抓取開始 ===")
+try:
+    from data.binance_fetcher import fetch_crypto_all
+    from scoring.crypto_engine import compute_crypto_rs_scores
+
+    logger.info("Fetching crypto OHLCV…")
+    crypto_raw = fetch_crypto_all()
+    logger.info("Computing crypto RS scores…")
+    crypto_rs_df = compute_crypto_rs_scores(crypto_raw)
+    save("crypto_rs_scores", {
+        "scores": to_records(crypto_rs_df),
+        "last_updated": now,
+    })
+    logger.info("加密貨幣完成：%d 檔", len(crypto_rs_df))
+except Exception as e:
+    logger.error("加密貨幣資料抓取失敗：%s", e)
+    save("crypto_rs_scores", {"scores": [], "last_updated": now})
+
 # ── 大盤指數（靜態模式 header 用）────────────────────────────────────────────
 logger.info("=== 指數資料抓取 ===")
 try:
@@ -150,7 +169,7 @@ try:
     from server import _fetch_tw_futures, _fetch_vixtwn
 
     indices = []
-    df_twii = yf.Ticker("^TWII").history(period="2d", auto_adjust=True, raise_errors=False)
+    df_twii = yf.Ticker("^TWII").history(period="5d", auto_adjust=True, raise_errors=False)
     if df_twii is not None and not df_twii.empty:
         last = float(df_twii["Close"].iloc[-1])
         prev = float(df_twii["Close"].iloc[-2]) if len(df_twii) >= 2 else last
