@@ -337,28 +337,9 @@ html, body {
   z-index: 10;
 }
 
-#divider::after {
-  content: '⋮';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: var(--text2);
-  font-size: 16px;
-  letter-spacing: -2px;
-  pointer-events: none;
-  transition: color 0.2s;
-  user-select: none;
-}
-
 #divider:hover,
 #divider.dragging {
   background: var(--accent-lo);
-}
-
-#divider:hover::after,
-#divider.dragging::after {
-  color: var(--accent);
 }
 
 #table-toolbar {
@@ -405,8 +386,7 @@ html, body {
 }
 
 .strategy-btn,
-.tw-strategy-btn,
-.tw-filter-btn {
+.tw-strategy-btn {
   padding: 5px 14px;
   min-width: 72px;
   border-radius: 18px;
@@ -422,15 +402,13 @@ html, body {
 }
 
 .strategy-btn:hover,
-.tw-strategy-btn:hover,
-.tw-filter-btn:hover {
+.tw-strategy-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
 
 .strategy-btn.active,
-.tw-strategy-btn.active,
-.tw-filter-btn.active {
+.tw-strategy-btn.active {
   background: var(--accent-lo);
   border-color: var(--accent);
   color: var(--accent);
@@ -764,8 +742,7 @@ td.breakout-cell {
 }
 
 /* 個股/板塊視角切換 */
-#view-toggle,
-#tw-view-tabs {
+#view-toggle {
   display: flex;
   gap: 2px;
   flex-shrink: 0;
@@ -786,8 +763,7 @@ td.breakout-cell {
 .view-btn:hover { border-color: var(--accent); color: var(--accent); }
 .view-btn.active { background: var(--accent-lo); border-color: var(--accent); color: var(--accent); }
 
-.tw-strategy-btn:disabled,
-.tw-filter-btn:disabled {
+.tw-strategy-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
   pointer-events: none;
@@ -1156,27 +1132,22 @@ td.signal-cell {
 #divider + #chart-panel.closed { display: none; }
 
 #close-chart-btn {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 30;
-  width: 24px; height: 24px;
+  position: sticky;
+  right: 0;
+  z-index: 31;
+  width: 28px;
+  height: 28px;
+  margin-left: 6px;
+  flex: 0 0 auto;
   border-radius: 50%;
   border: 1px solid rgba(255,255,255,0.15);
   background: rgba(6, 11, 18, 0.75);
-  backdrop-filter: blur(4px);
   color: var(--text1);
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  opacity: 0;
-  transition: opacity 0.18s, color 0.15s, background 0.15s;
-  pointer-events: none;
-}
-#chart-panel:hover #close-chart-btn {
-  opacity: 1;
-  pointer-events: auto;
+  transition: color 0.15s, background 0.15s;
 }
 #close-chart-btn:hover {
   color: var(--text0);
@@ -1206,7 +1177,7 @@ td.signal-cell {
 
 #chart-symbol {
   font-family: var(--mono);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--accent);
   letter-spacing: -0.3px;
@@ -1216,15 +1187,19 @@ td.signal-cell {
 #chart-symbol .sym-name {
   color: var(--text1);
   font-weight: 400;
-  font-size: 13px;
+  font-size: 16px;
   margin-left: 6px;
 }
 
 #chart-live-price {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 16px;
   white-space: nowrap;
   flex-shrink: 0;
+}
+#chart-live-price .chart-live-value {
+  font-family: var(--mono);
+  font-size: 16px;
 }
 
 /* 游標 OHLC 資訊列 */
@@ -1233,7 +1208,7 @@ td.signal-cell {
   align-items: center;
   gap: 12px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 16px;
   flex-shrink: 0;
   white-space: nowrap;
 }
@@ -1265,6 +1240,14 @@ td.signal-cell {
 
 .ctrl:hover { border-color: var(--accent); color: var(--accent); }
 .ctrl.on { background: var(--accent-lo); border-color: var(--accent); color: var(--accent); }
+.ctrl.icon {
+  width: 30px;
+  padding: 4px 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
 
 /* Divider between period and EMA buttons */
 .ctrl-sep {
@@ -1273,6 +1256,176 @@ td.signal-cell {
   background: var(--border);
   align-self: center;
   flex-shrink: 0;
+}
+
+.chart-indicator-strip {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 44;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 36px;
+  max-width: calc(100% - 20px);
+  padding: 4px;
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 5px;
+  background: rgba(6, 11, 18, 0.78);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 22px rgba(0,0,0,0.24);
+}
+
+#chart-indicator-buttons {
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+#chart-indicator-buttons .ctrl.on {
+  border-color: var(--indicator-color);
+  color: var(--indicator-color);
+  background: color-mix(in srgb, var(--indicator-color) 16%, transparent);
+}
+#chart-indicator-collapse-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+#chart-indicator-collapse-btn svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+  stroke: currentColor;
+}
+.indicator-overlay-collapsed .chart-indicator-strip {
+  min-height: 36px;
+  align-items: center;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.indicator-overlay-collapsed #chart-indicator-buttons,
+.indicator-overlay-collapsed #chart-indicator-settings-btn {
+  display: none;
+}
+
+#chart-indicator-panel {
+  position: absolute;
+  top: 48px;
+  left: 10px;
+  z-index: 45;
+  width: min(410px, calc(100% - 24px));
+  max-height: calc(100% - 62px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  background: rgba(10, 15, 24, 0.98);
+  box-shadow: 0 18px 60px rgba(0,0,0,0.45);
+  display: none;
+}
+#chart-indicator-panel.open { display: block; }
+.indicator-panel-head {
+  min-height: 46px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.indicator-title {
+  color: var(--text0);
+  font-size: 12px;
+  font-weight: 700;
+}
+.indicator-mode-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+}
+.indicator-mode-toggle .ctrl {
+  border: 0;
+  border-radius: 2px;
+  min-width: 44px;
+}
+.indicator-reset {
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.06);
+  color: var(--text0);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.indicator-row {
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 36px minmax(78px, 1fr) 44px 82px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.035);
+}
+.indicator-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--text2);
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.indicator-check.on {
+  border-color: transparent;
+  background: #0ea5e9;
+  color: white;
+}
+.indicator-label {
+  color: var(--text0);
+  font-size: 14px;
+  font-weight: 700;
+}
+.indicator-line-sample {
+  width: 34px;
+  height: 18px;
+  position: relative;
+}
+.indicator-line-sample::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  clip-path: polygon(0 58%, 23% 58%, 35% 22%, 49% 78%, 61% 42%, 100% 42%, 100% 58%, 66% 58%, 50% 92%, 35% 46%, 28% 72%, 0 72%);
+}
+.indicator-period-input {
+  width: 100%;
+  height: 34px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.22);
+  color: var(--text0);
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 700;
+}
+.indicator-period-input:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 /* Chart area */
@@ -1325,10 +1478,11 @@ td.signal-cell {
 }
 #measure-sel {
   position: absolute;
+  display: none;
   top: 0;
-  bottom: 0;
   left: 0;
   width: 0;
+  height: 0;
   background: linear-gradient(to bottom,
     rgba(180, 190, 210, 0.08) 0%,
     rgba(180, 190, 210, 0.20) 50%,
@@ -1336,6 +1490,8 @@ td.signal-cell {
   );
   border-left:  1px dashed rgba(180, 200, 255, 0.6);
   border-right: 1px dashed rgba(180, 200, 255, 0.6);
+  border-top:   1px dashed rgba(180, 200, 255, 0.6);
+  border-bottom: 1px dashed rgba(180, 200, 255, 0.6);
   pointer-events: none;
 }
 #measure-tip {
@@ -1489,17 +1645,12 @@ td.signal-cell {
           <button class="strategy-btn" data-strategy="technical">技術面加乘</button>
           <button class="strategy-btn" data-strategy="fundamental">基本面加乘</button>
         </div>
-        <!-- 台股 view 切換（左側，類美股 view-toggle） -->
-        <div id="tw-view-tabs" style="display:none">
-          <button class="view-btn" data-twview="early">起漲觀察</button>
-          <button class="view-btn" data-twview="breakout">突破觀察</button>
-        </div>
         <!-- 台股策略（右側，只在主表顯示） -->
         <div id="tw-strategy-tabs" style="display:none">
-          <button class="tw-strategy-btn active" data-strategy="rs">RS排名</button>
-          <button class="tw-filter-btn" data-strategy="chips">籌碼加乘</button>
           <button class="tw-strategy-btn" data-strategy="rotation">板塊輪動</button>
-          <button class="tw-strategy-btn" data-strategy="confluence">RS籌碼共振</button>
+          <button class="tw-strategy-btn" data-strategy="value">成交值排名</button>
+          <button class="tw-strategy-btn active" data-strategy="rs">RS排名</button>
+          <button class="tw-strategy-btn" data-strategy="chips">籌碼排名</button>
         </div>
         <div id="crypto-strategy-tabs" style="display:none">
           <button class="tw-strategy-btn active" data-strategy="rs">RS排名</button>
@@ -1532,36 +1683,6 @@ td.signal-cell {
           </table>
           <div id="breakout-empty" style="display:none; padding:60px; text-align:center; color:var(--text2); font-size:12px">目前無符合條件的突破標的</div>
         </div>
-        <!-- 台股起漲觀察 -->
-        <div id="tw-early-stage-view" style="display:none">
-          <div style="padding:10px 16px 6px; font-size:12px; color:var(--text1); border-bottom:1px solid var(--border); background:var(--bg1)">
-            篩選：<span style="color:var(--up)">slope_20d &gt; 0</span>（近期翻多）＋
-            <span style="color:var(--gold)">slope_60d &lt; 0</span>（尚未大漲）＋
-            <span style="color:var(--text2)">breakout 15~50</span>（蓄勢中）＋
-            <span style="color:var(--accent)">RS Score 30~80</span>＋
-            <span style="color:#60a5fa">vol_accel &gt; 0.9</span>（量能放大）＋
-            <span style="color:#a78bfa">法人進場</span>
-            — 布局期觀察清單，非動能排行
-          </div>
-          <table id="tw-early-table" style="width:100%;border-collapse:collapse;table-layout:fixed;">
-            <thead id="tw-early-head"></thead>
-            <tbody id="tw-early-body"></tbody>
-          </table>
-          <div id="tw-early-empty" style="display:none; padding:60px; text-align:center; color:var(--text2); font-size:12px">目前無符合條件的起漲候選標的</div>
-        </div>
-        <!-- 台股突破觀察 -->
-        <div id="tw-breakout-view" style="display:none">
-          <div style="padding:10px 16px 6px; font-size:12px; color:var(--text1); border-bottom:1px solid var(--border); background:var(--bg1)">
-            篩選：<span style="color:var(--up)">slope_20d &gt; 0</span>（近期翻多）＋
-            <span style="color:var(--gold)">slope_60d &lt; 0</span>（前期弱）＋
-            <span style="color:var(--accent)">breakout &gt; 50</span>（量價突破）
-          </div>
-          <table id="tw-breakout-table" style="width:100%;border-collapse:collapse;table-layout:fixed;">
-            <thead id="tw-breakout-head"></thead>
-            <tbody id="tw-breakout-body"></tbody>
-          </table>
-          <div id="tw-breakout-empty" style="display:none; padding:60px; text-align:center; color:var(--text2); font-size:12px">目前無符合條件的台股突破標的</div>
-        </div>
         <div id="empty-msg" class="show">點擊「刷新」載入資料</div>
       </div>
     </div>
@@ -1584,16 +1705,66 @@ td.signal-cell {
           <div class="ctrl-sep"></div>
           <button class="ctrl on"  id="c-day">日K</button>
           <button class="ctrl"     id="c-week">週K</button>
-          <div class="ctrl-sep"></div>
-          <button class="ctrl" id="c-ema10"  data-span="10">EMA10</button>
-          <button class="ctrl" id="c-ema20"  data-span="20">EMA20</button>
-          <button class="ctrl" id="c-ema50"  data-span="50">EMA50</button>
-          <button class="ctrl" id="c-ema120" data-span="120">EMA120</button>
-          <button class="ctrl" id="c-ema200" data-span="200">EMA200</button>
         </div>
+        <button id="close-chart-btn" title="關閉圖表">✕</button>
       </div>
-      <button id="close-chart-btn" title="關閉圖表">✕</button>
       <div id="chart-area">
+        <div id="chart-indicator-overlay">
+          <div class="chart-indicator-strip">
+            <button class="ctrl icon" id="chart-indicator-collapse-btn" title="收合技術線" aria-label="收合技術線"></button>
+            <div id="chart-indicator-buttons"></div>
+            <button class="ctrl icon" id="chart-indicator-settings-btn" title="技術線設定" aria-label="技術線設定">⚙</button>
+          </div>
+        </div>
+        <div id="chart-indicator-panel" aria-label="技術線設定面板">
+          <div class="indicator-panel-head">
+            <div>
+              <div class="indicator-title">技術線設定</div>
+              <div style="color:var(--text2);font-size:10px;margin-top:3px">自定義線型週期</div>
+            </div>
+            <div class="indicator-mode-toggle" aria-label="線型">
+              <button class="ctrl" data-indicator-mode="EMA">EMA</button>
+              <button class="ctrl" data-indicator-mode="MA">MA</button>
+            </div>
+            <button class="indicator-reset" id="chart-indicator-reset">還原預設</button>
+          </div>
+          <div class="indicator-row" data-indicator-index="0">
+            <button class="indicator-check" type="button" aria-label="啟用天數1">✓</button>
+            <div class="indicator-label">天數1</div>
+            <div class="indicator-line-sample"></div>
+            <input class="indicator-period-input" type="number" min="1" max="999" inputmode="numeric">
+          </div>
+          <div class="indicator-row" data-indicator-index="1">
+            <button class="indicator-check" type="button" aria-label="啟用天數2">✓</button>
+            <div class="indicator-label">天數2</div>
+            <div class="indicator-line-sample"></div>
+            <input class="indicator-period-input" type="number" min="1" max="999" inputmode="numeric">
+          </div>
+          <div class="indicator-row" data-indicator-index="2">
+            <button class="indicator-check" type="button" aria-label="啟用天數3">✓</button>
+            <div class="indicator-label">天數3</div>
+            <div class="indicator-line-sample"></div>
+            <input class="indicator-period-input" type="number" min="1" max="999" inputmode="numeric">
+          </div>
+          <div class="indicator-row" data-indicator-index="3">
+            <button class="indicator-check" type="button" aria-label="啟用天數4">✓</button>
+            <div class="indicator-label">天數4</div>
+            <div class="indicator-line-sample"></div>
+            <input class="indicator-period-input" type="number" min="1" max="999" inputmode="numeric">
+          </div>
+          <div class="indicator-row" data-indicator-index="4">
+            <button class="indicator-check" type="button" aria-label="啟用天數5">✓</button>
+            <div class="indicator-label">天數5</div>
+            <div class="indicator-line-sample"></div>
+            <input class="indicator-period-input" type="number" min="1" max="999" inputmode="numeric">
+          </div>
+          <div class="indicator-row" data-indicator-index="5">
+            <button class="indicator-check" type="button" aria-label="啟用天數6">✓</button>
+            <div class="indicator-label">天數6</div>
+            <div class="indicator-line-sample"></div>
+            <input class="indicator-period-input" type="number" min="1" max="999" inputmode="numeric">
+          </div>
+        </div>
         <div id="chart-mount"></div>
         <div id="measure-layer">
           <div id="measure-sel"></div>
@@ -1720,6 +1891,20 @@ const TW_RS_COLS = [
   // SCORE 欄位移除（RS Score 已是主排序依據）
 ];
 
+const TW_VALUE_COLS = [
+  { key:'rank',           label:'RANK',       w:'60px',  align:'center', cls:'rank-cell',  fmt:v=>v??'—', sticky:true },
+  { key:'ticker',         label:'標的',       w:'140px', align:'left',   cls:'ticker-cell',fmt:v=>v||'—', sticky:true, tw_merge_name:true },
+  { key:'price',          label:'PRICE',      w:'82px',  align:'right',  fmt:v=>v!=null?parseFloat(v.toFixed(2)).toString():'—' },
+  { key:'_change',        label:'漲跌',       w:'68px',  align:'right',  cls:'change-col', fmt:v=>'—' },
+  { key:'day_return',     label:'當日%',      w:'68px',  align:'right',  cls:'pct',        fmt:pct },
+  { key:'volume',         label:'成交量(張)', w:'90px',  align:'right',  fmt:v=>v!=null?v.toLocaleString():'—' },
+  { key:'turnover_value', label:'成交值(億)', w:'98px',  align:'right',  cls:'chips',      fmt:v=>v!=null?formatUnsignedYi(v / 1e8):'—' },
+  { key:'ret_20d',        label:'近月%',      w:'68px',  align:'right',  cls:'pct',        fmt:pct },
+  { key:'q1_pct',         label:'Q1(3M)',     w:'76px',  align:'right',  cls:'pct',        fmt:pct },
+  { key:'q2_pct',         label:'Q2(3-6M)',   w:'82px',  align:'right',  cls:'pct',        fmt:pct },
+  { key:'rs_score',       label:'RS SCORE',   w:'86px',  align:'right',  cls:'rs-rating',  fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
+];
+
 const TW_COLS = [
   { key:'rank',       label:'RANK',       w:'52px',  align:'center', cls:'rank-cell',   fmt:v=>v??'—',  sticky:true },
   { key:'ticker',     label:'標的',      w:'140px', align:'left',   cls:'ticker-cell', fmt:v=>v||'—',  sticky:true, tw_merge_name:true },
@@ -1751,21 +1936,6 @@ const TW_ROTATION_COLS = [
   { key:'sector_net_20d_yi',   label:'20日資金(億)', w:'108px', align:'right', cls:'chips', fmt:v=>v!=null?`${v>=0?'+':''}${v.toFixed(2)}`:'—' },
   { key:'sector_accel_yi',     label:'加速度',   w:'90px',  align:'right', cls:'chips', fmt:v=>v!=null?`${v>=0?'+':''}${v.toFixed(2)}`:'—' },
   { key:'sector_flow_score',   label:'板塊分',   w:'100px', align:'right', cls:'score', fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
-];
-
-const TW_CONFLUENCE_COLS = [
-  { key:'rank',                label:'RANK',    w:'52px',  align:'center', cls:'rank-cell',          fmt:v=>v??'—',  sticky:true },
-  { key:'ticker',              label:'標的',    w:'140px', align:'left',   cls:'ticker-cell',         fmt:v=>v||'—',  sticky:true, tw_merge_name:true },
-  { key:'price',               label:'PRICE',   w:'82px',  align:'right',  fmt:v=>v!=null?parseFloat(v.toFixed(2)).toString():'—' },
-  { key:'day_return',          label:'日%',     w:'68px',  align:'right',  cls:'pct',                 fmt:pct },
-  { key:'rs_score',            label:'RS分',    w:'72px',  align:'right',  cls:'rs-rating',           fmt:v=>v!=null?v.toFixed(1):'—' },
-  { key:'sector_theme',        label:'板塊',    w:'90px',  align:'center', cls:'sector-cell',         fmt:v=>v||'—' },
-  { key:'sector_flow_status',  label:'板塊資金',w:'76px',  align:'center', cls:'sector-flow',         fmt:v=>v||'—' },
-  { key:'sector_flow_score',   label:'板塊分',  w:'70px',  align:'right',  cls:'sector-flow-score',   fmt:v=>v!=null?v.toFixed(1):'—' },
-  { key:'fi_net',              label:'外資(張)',w:'82px',  align:'right',  cls:'chips',               fmt:v=>v!=null?Math.round(v/1000).toLocaleString():'—' },
-  { key:'it_net',              label:'投信(張)',w:'82px',  align:'right',  cls:'chips',               fmt:v=>v!=null?Math.round(v/1000).toLocaleString():'—' },
-  { key:'tw_score',            label:'籌碼分',  w:'72px',  align:'right',  cls:'chips',               fmt:v=>v!=null?v.toFixed(1):'—' },
-  { key:'confluence_score',    label:'共振分',  w:'86px',  align:'right',  cls:'score',               fmt:v=>v!=null?v.toFixed(1):'—', sticky_right:true },
 ];
 
 const CRYPTO_RS_COLS = [
@@ -1811,6 +1981,12 @@ function formatYi(v, opts = {}) {
   return `${sign}${Math.abs(n).toFixed(2)}${suffix}`;
 }
 
+function formatUnsignedYi(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  return `${Math.abs(n).toFixed(2)} 億`;
+}
+
 function formatSignedPct(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return '—';
@@ -1829,6 +2005,13 @@ function signedTwClass(v) {
   const n = Number(v);
   if (!Number.isFinite(n) || n === 0) return '';
   return n > 0 ? 'drawer-tw-pos' : 'drawer-tw-neg';
+}
+
+function computeTwTurnoverValue(row) {
+  const price = Number(row?.price);
+  const volumeLots = Number(row?.volume);
+  if (!Number.isFinite(price) || !Number.isFinite(volumeLots)) return null;
+  return price * volumeLots * 1000;
 }
 
 function rotationStatusClass(status) {
@@ -1912,10 +2095,10 @@ const S = {
   historyPeriod:   '1y',
   strategyMode:    'rs',
   strategyLayers:  { technical: false, fundamental: false },
-  twView:          'stock',   // 台股視圖：'stock' | 'breakout' | 'early'
-  twStrategy:      'rs',      // 台股主表策略：'rs' | 'chips' | 'confluence'
-  chipsFilter:     false,
-  ema:             { 10: false, 20: false, 50: false, 120: false, 200: false },
+  twStrategy:      'value',
+  twActiveStrategies: ['value'],
+  indicatorMode:   'EMA',
+  indicators:      [],
   chartFitAll:     false,
 };
 
@@ -1936,7 +2119,7 @@ async function loadStaticScores() {
   const file = S.universe === 'crypto'
     ? 'crypto_rs_scores.json'
     : (isTw
-      ? (S.twStrategy === 'rs' ? 'tw_rs_scores.json' : 'tw_scores.json')
+      ? (twHasStrategy('chips') ? 'tw_scores.json' : 'tw_rs_scores.json')
       : 'us_scores.json');
   const r = await fetch(`${STATIC_BASE}/${file}`);
   const d = await r.json();
@@ -1961,18 +2144,175 @@ async function bootstrapStaticData() {
 }
 let lwChart      = null;
 let candleSeries = null;
-let volSeries    = null;
 let emaSeries    = {};
+
+const DEFAULT_INDICATORS = [
+  { enabled: true,  period: 10,  color: '#34d399' },
+  { enabled: true,  period: 20,  color: '#f59e0b' },
+  { enabled: true,  period: 50,  color: '#38bdf8' },
+  { enabled: false, period: 120, color: '#c084fc' },
+  { enabled: false, period: 200, color: '#ffffff' },
+  { enabled: false, period: 240, color: '#fb923c' },
+];
+const INDICATOR_STORAGE_KEY = 'stock-tools-chart-indicators';
+
+function cloneIndicators(items) {
+  return items.map(item => ({ ...item }));
+}
+
+function normalizeIndicatorSettings(settings) {
+  const fallback = { indicatorMode: 'EMA', indicators: cloneIndicators(DEFAULT_INDICATORS) };
+  const mode = settings?.indicatorMode === 'MA' ? 'MA' : 'EMA';
+  const source = Array.isArray(settings?.indicators) ? settings.indicators : [];
+  const indicators = DEFAULT_INDICATORS.map((def, i) => {
+    const item = source[i] || {};
+    const period = Math.max(1, Math.min(999, parseInt(item.period, 10) || def.period));
+    return {
+      enabled: typeof item.enabled === 'boolean' ? item.enabled : def.enabled,
+      period,
+      color: def.color,
+    };
+  });
+  return { ...fallback, indicatorMode: mode, indicators };
+}
+
+function loadIndicatorSettings() {
+  try {
+    return normalizeIndicatorSettings(JSON.parse(localStorage.getItem(INDICATOR_STORAGE_KEY) || '{}'));
+  } catch (_) {
+    return normalizeIndicatorSettings(null);
+  }
+}
+
+function saveIndicatorSettings() {
+  localStorage.setItem(INDICATOR_STORAGE_KEY, JSON.stringify({
+    indicatorMode: S.indicatorMode,
+    indicators: S.indicators.map(({ enabled, period }) => ({ enabled, period })),
+  }));
+}
+
+function indicatorLabel(item) {
+  return `${S.indicatorMode}${item.period}`;
+}
+
+function renderIndicatorButtons() {
+  const mount = document.getElementById('chart-indicator-buttons');
+  if (!mount) return;
+  mount.innerHTML = S.indicators.filter(item => item.enabled).map((item) => `
+    <button class="ctrl on" data-indicator-toggle="${S.indicators.indexOf(item)}" style="--indicator-color:${item.color}">
+      ${indicatorLabel(item)}
+    </button>
+  `).join('');
+}
+
+function renderIndicatorControls() {
+  document.querySelectorAll('[data-indicator-mode]').forEach(btn => {
+    btn.classList.toggle('on', btn.dataset.indicatorMode === S.indicatorMode);
+  });
+  document.querySelectorAll('[data-indicator-index]').forEach(row => {
+    const idx = parseInt(row.dataset.indicatorIndex, 10);
+    const item = S.indicators[idx];
+    if (!item) return;
+    const check = row.querySelector('.indicator-check');
+    const sample = row.querySelector('.indicator-line-sample');
+    const input = row.querySelector('.indicator-period-input');
+    check.classList.toggle('on', item.enabled);
+    sample.style.color = item.color;
+    input.value = item.period;
+  });
+  renderIndicatorButtons();
+}
+
+function chevronIcon(direction) {
+  const points = direction === 'down' ? '6 9 12 15 18 9' : '6 15 12 9 18 15';
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="${points}"></polyline></svg>`;
+}
+
+function toggleIndicatorOverlay(forceCollapsed = null) {
+  const overlay = document.getElementById('chart-indicator-overlay');
+  const btn = document.getElementById('chart-indicator-collapse-btn');
+  const panel = document.getElementById('chart-indicator-panel');
+  if (!overlay || !btn) return;
+  const nextCollapsed = forceCollapsed == null
+    ? !overlay.classList.contains('indicator-overlay-collapsed')
+    : !!forceCollapsed;
+  overlay.classList.toggle('indicator-overlay-collapsed', nextCollapsed);
+  btn.innerHTML = chevronIcon(nextCollapsed ? 'down' : 'up');
+  btn.title = nextCollapsed ? '展開技術線' : '收合技術線';
+  btn.setAttribute('aria-label', btn.title);
+  if (nextCollapsed) panel?.classList.remove('open');
+}
+
+function setIndicatorSettings(settings) {
+  const next = normalizeIndicatorSettings(settings);
+  S.indicatorMode = next.indicatorMode;
+  S.indicators = next.indicators;
+  saveIndicatorSettings();
+  renderIndicatorControls();
+  renderChart();
+}
+
+setIndicatorSettings(loadIndicatorSettings());
 
 // ══════════════════════════════════════════════════════════════
 //  HELPERS
 // ══════════════════════════════════════════════════════════════
+function twHasStrategy(strategy) {
+  return S.twActiveStrategies.includes(strategy);
+}
+
+function twPrimaryStrategy() {
+  if (twHasStrategy('rotation')) return 'rotation';
+  if (twHasStrategy('chips')) return 'chips';
+  if (twHasStrategy('value')) return 'value';
+  return 'rs';
+}
+
+function twScoreKey() {
+  if (twHasStrategy('rotation')) return 'sector_flow_score';
+  if (S.twStrategy === 'rs' && twHasStrategy('rs')) return 'rs_score';
+  if (S.twStrategy === 'value' && twHasStrategy('value')) return 'turnover_value';
+  if (S.twStrategy === 'chips' && twHasStrategy('chips')) return 'tw_score';
+  return twPrimaryStrategy() === 'chips'
+    ? 'tw_score'
+    : (twPrimaryStrategy() === 'value' ? 'turnover_value' : 'rs_score');
+}
+
+function toggleTwStrategy(strategy) {
+  if (strategy === 'rotation') {
+    S.twActiveStrategies = ['rotation'];
+    S.twStrategy = strategy;
+  } else {
+    if (S.twActiveStrategies.includes('rotation')) S.twActiveStrategies = [];
+    if (S.twActiveStrategies.includes(strategy)) {
+      S.twActiveStrategies = S.twActiveStrategies.filter(s => s !== strategy);
+      if (S.twStrategy === strategy && S.twActiveStrategies.length) {
+        S.twStrategy = S.twActiveStrategies[S.twActiveStrategies.length - 1];
+      }
+    } else {
+      S.twActiveStrategies = [...S.twActiveStrategies, strategy];
+      S.twStrategy = strategy;
+    }
+    if (!S.twActiveStrategies.length) S.twActiveStrategies = [strategy];
+  }
+  if (!twHasStrategy(S.twStrategy)) S.twStrategy = twPrimaryStrategy();
+}
+
+function visibleTwCols(cols) {
+  const active = S.twActiveStrategies.filter(strategy => strategy !== 'rotation');
+  if (active.length === 1 && !active.includes('rs')) {
+    return cols.filter(col => col.key !== 'rs_score');
+  }
+  return cols;
+}
+
 function cols() {
   if (S.universe === 'crypto') return CRYPTO_RS_COLS;
   if (S.universe === 'tw') {
-    if (S.twStrategy === 'rotation') return TW_ROTATION_COLS;
-    if (S.twStrategy === 'confluence') return TW_CONFLUENCE_COLS;
-    return S.twStrategy === 'chips' ? TW_COLS : TW_RS_COLS;
+    if (twHasStrategy('rotation')) return TW_ROTATION_COLS;
+    if (twHasStrategy('chips')) return visibleTwCols(TW_COLS);
+    if (twHasStrategy('value')) return visibleTwCols(TW_VALUE_COLS);
+    return visibleTwCols(TW_RS_COLS);
   }
   if (S.strategyMode === 'rtf') return US_RTF_COLS;
   return S.strategyMode === 'rs' ? US_RS_COLS : US_COLS;
@@ -1980,9 +2320,7 @@ function cols() {
 function scoreKey() {
   if (S.universe === 'crypto') return 'rs_rating';
   if (S.universe === 'tw') {
-    if (S.twStrategy === 'rotation') return 'sector_flow_score';
-    if (S.twStrategy === 'confluence') return 'confluence_score';
-    return S.twStrategy === 'chips' ? 'tw_score' : 'rs_score';
+    return twScoreKey();
   }
   if (S.strategyMode === 'rtf') return 'rtf_score';
   if (S.strategyLayers.fundamental && S.strategyLayers.technical) return '_combo';
@@ -2244,7 +2582,9 @@ function renderBody(opts = {}) {
       // _change 是虛擬欄位，從計算值取得
       const val = col.key === '_change'
         ? _changeVal
-        : (col.key === 'rank' && S.universe !== 'tw' && S.strategyMode !== 'rs')
+        : (col.key === 'rank' && S.universe === 'tw')
+          ? i + 1
+          : (col.key === 'rank' && S.universe !== 'tw' && S.strategyMode !== 'rs')
           ? i + 1
           : (col.key === 'adjusted_score' && _sk === '_combo')
             ? _scoreVal(row)   // 疊加模式：SCORE 欄顯示 combo 分數，RANK 才有意義
@@ -2454,20 +2794,8 @@ function initChart() {
     wickDownColor:  '#ef4444',
   });
 
-  // Shrink main price scale to leave room for volume at bottom
   lwChart.priceScale('right').applyOptions({
-    scaleMargins: { top: 0.04, bottom: 0.22 },
-  });
-
-  // Volume histogram on its own scale
-  volSeries = lwChart.addHistogramSeries({
-    priceFormat:      { type: 'volume' },
-    priceScaleId:     'vol',
-    lastValueVisible: false,
-    priceLineVisible: false,
-  });
-  lwChart.priceScale('vol').applyOptions({
-    scaleMargins: { top: 0.8, bottom: 0 },
+    scaleMargins: { top: 0.04, bottom: 0.06 },
   });
 
   // Resize
@@ -2582,7 +2910,16 @@ function calcEMA(candles, span) {
   });
 }
 
-const EMA_COLORS = { 10: '#34d399', 20: '#f59e0b', 50: '#38bdf8', 120: '#c084fc', 200: '#ffffff' };
+function calcMA(candles, span) {
+  const values = [];
+  let sum = 0;
+  candles.forEach((c, i) => {
+    sum += c.close;
+    if (i >= span) sum -= candles[i - span].close;
+    if (i >= span - 1) values.push({ time: c.time, value: sum / span });
+  });
+  return values;
+}
 
 function renderChart() {
   if (!S.ohlcvData) return;
@@ -2614,39 +2951,25 @@ function renderChart() {
 
   candleSeries.setData(candles);
 
-  // Volume histogram（顏色同步，同樣用昨收判斷）
-  if (volSeries) {
-    volSeries.setData(candles.map((c, i) => {
-      const prevClose = i > 0 ? candles[i - 1].close : c.open;
-      const isUp = c.close >= prevClose;
-      return {
-        time:  c.time,
-        value: c._vol,
-        color: isUp
-          ? (isTw ? 'rgba(239,68,68,0.55)' : 'rgba(34,197,94,0.55)')
-          : (isTw ? 'rgba(34,197,94,0.55)' : 'rgba(239,68,68,0.55)'),
-      };
-    }));
-  }
-
-  // Remove old EMA series
+  // Remove old indicator series
   Object.values(emaSeries).forEach(s => lwChart.removeSeries(s));
   emaSeries = {};
 
-  // Add active EMA series
-  Object.entries(S.ema).forEach(([span, on]) => {
-    if (!on) return;
-    const n = parseInt(span);
+  // Add active MA/EMA series
+  S.indicators.forEach((item, idx) => {
+    if (!item.enabled) return;
+    const n = parseInt(item.period, 10);
     if (candles.length < n) return;
     const s = lwChart.addLineSeries({
-      color:              EMA_COLORS[n] || '#aaa',
+      color:              item.color,
       lineWidth:          1.5,
       priceLineVisible:   false,
       lastValueVisible:   true,
       crosshairMarkerVisible: false,
     });
-    s.setData(calcEMA(candles, n));
-    emaSeries[span] = s;
+    const data = S.indicatorMode === 'MA' ? calcMA(candles, n) : calcEMA(candles, n);
+    s.setData(data);
+    emaSeries[idx] = s;
   });
 
   const _total = candles.length;
@@ -2671,7 +2994,7 @@ function renderChart() {
       : (isTw ? 'var(--up)'   : 'var(--down)'); // TW 跌=綠, US 跌=紅
     const sign   = chg >= 0 ? '+' : '';
     document.getElementById('chart-live-price').innerHTML =
-      `<span style="color:${col};font-family:var(--mono);font-size:12px;">${quotePrice.toFixed(2)} (${sign}${chgPct}%)</span>`;
+      `<span class="chart-live-value" style="color:${col};">${quotePrice.toFixed(2)} (${sign}${chgPct}%)</span>`;
   }
 }
 
@@ -2734,7 +3057,7 @@ function setStatus(cls, text) {
 function lockUI(lock) {
   document.getElementById('refresh-btn').disabled = lock;
   document.querySelectorAll('.tab').forEach(b => { b.disabled = lock; });
-  document.querySelectorAll('.strategy-btn, .tw-strategy-btn, .tw-filter-btn').forEach(b => { b.disabled = lock; });
+  document.querySelectorAll('.strategy-btn, .tw-strategy-btn').forEach(b => { b.disabled = lock; });
 }
 
 // ── Progress animation (lerp) ──
@@ -2872,10 +3195,6 @@ async function loadScores(opts = {}) {
   if (opts.resetSort !== false) S.sortKey = null;
 
   if (S.universe === 'tw' && !opts.data) {
-    // 台股：依 S.twView 決定載入哪個 view
-    _showTwView(S.twView);
-    if (S.twView === 'early')    { await renderTwEarlyStageView(); return; }
-    if (S.twView === 'breakout') { await renderTwBreakoutView();   return; }
     await loadTwStrategy(S.twStrategy);
   } else if (S.universe === 'crypto' && !opts.data) {
     const url = IS_STATIC ? `${STATIC_BASE}/crypto_rs_scores.json` : '/api/crypto-rs-scores';
@@ -2940,7 +3259,7 @@ async function refreshLivePrices() {
     if (S.selectedTicker) {
       const row = S.scores.find(r => r.ticker === S.selectedTicker);
       if (row) document.getElementById('chart-live-price').innerHTML =
-        `<span style="color:${row.day_return >= 0 ? 'var(--up)' : 'var(--down)'};font-family:var(--mono);font-size:12px;">${row.price.toFixed(2)} (${pct(row.day_return)})</span>`;
+        `<span class="chart-live-value" style="color:${row.day_return >= 0 ? 'var(--up)' : 'var(--down)'};">${row.price.toFixed(2)} (${pct(row.day_return)})</span>`;
     }
   } catch(e) {
     console.warn('live refresh failed', e);
@@ -2989,8 +3308,7 @@ const _cryptoSSE = {
             const row = S.scores.find(r => r.ticker === S.selectedTicker);
             if (row) {
               document.getElementById('chart-live-price').innerHTML =
-                `<span style="color:${row.day_return >= 0 ? 'var(--up)' : 'var(--down)'};\
-font-family:var(--mono);font-size:12px;">${row.price.toFixed(4)} (${pct(row.day_return)})</span>`;
+                `<span class="chart-live-value" style="color:${row.day_return >= 0 ? 'var(--up)' : 'var(--down)'};">${row.price.toFixed(4)} (${pct(row.day_return)})</span>`;
             }
           }
 
@@ -3259,33 +3577,12 @@ function updateStrategyTabs() {
     });
   }
 
-  // 台股 view tabs（起漲觀察 / 突破觀察）
-  const twViewTabs = document.getElementById('tw-view-tabs');
-  if (twViewTabs) {
-    twViewTabs.style.display = isTw ? 'flex' : 'none';
-    twViewTabs.querySelectorAll('.view-btn[data-twview]').forEach(b => {
-      b.classList.toggle('active', b.dataset.twview === S.twView);
-    });
-  }
-
-  // 台股 strategy tabs（RS排名 / 籌碼加乘 / RS籌碼共振）
+  // 台股 strategy tabs（板塊輪動單選；成交值 / RS / 籌碼可疊加）
   const twStratTabs = document.getElementById('tw-strategy-tabs');
   if (twStratTabs) {
     twStratTabs.style.display = isTw ? 'flex' : 'none';
-    const inObsView = isTw && S.twView !== 'stock';
     twStratTabs.querySelectorAll('.tw-strategy-btn').forEach(b => {
-      const s = b.dataset.strategy;
-      // RS排名：rs 或 confluence 時都亮（confluence = RS + 籌碼共振）
-      const isActive = s === 'rs'
-        ? (S.twStrategy === 'rs' || S.twStrategy === 'confluence')
-        : s === S.twStrategy;
-      b.classList.toggle('active', !inObsView && isActive);
-      b.disabled = inObsView;
-    });
-    twStratTabs.querySelectorAll('.tw-filter-btn').forEach(b => {
-      // 籌碼加乘：chipsFilter 開啟 或 confluence 時都亮
-      b.classList.toggle('active', S.chipsFilter || S.twStrategy === 'confluence');
-      b.disabled = inObsView;
+      b.classList.toggle('active', twHasStrategy(b.dataset.strategy));
     });
   }
 
@@ -3312,14 +3609,6 @@ function setView(view) {
 
 // Legacy alias used elsewhere
 function setSectorView(on) { setView(on ? 'sector' : 'stock'); }
-
-// 台股 view 顯示/隱藏 helper
-function _showTwView(view) {
-  document.getElementById('scores-table').style.display         = view === 'stock'   ? '' : 'none';
-  document.getElementById('tw-breakout-view').style.display     = view === 'breakout'? '' : 'none';
-  document.getElementById('tw-early-stage-view').style.display  = view === 'early'   ? '' : 'none';
-  updateStrategyTabs();
-}
 
 // ── BREAKOUT 突破觀察清單 ─────────────────────────────────────────────────────
 async function renderBreakoutView() {
@@ -3524,8 +3813,8 @@ document.querySelectorAll('.tab').forEach(btn => {
     S.universe = btn.dataset.u;
     S.scores = []; S.filteredScores = [];
     S.strategyMode = 'rs';
-    S.twView = 'stock';    // 切換 universe 時重設台股 view
-    S.twStrategy = 'rs';
+    S.twStrategy = 'value';
+    S.twActiveStrategies = ['value'];
     fetchIndices();
     S.strategyLayers = { technical: false, fundamental: false };
     S.sortKey = null;
@@ -3633,46 +3922,55 @@ document.querySelectorAll('#us-strategy-tabs .strategy-btn').forEach(btn => {
   });
 });
 
-// 台股策略 tab 事件
-// 台股 view 切換（起漲觀察 / 突破觀察）
-document.querySelectorAll('#tw-view-tabs .view-btn[data-twview]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const view = btn.dataset.twview;
-    if (S.twView === view) {
-      // 再次點擊同一個 view → 回到主表
-      S.twView = 'stock';
-    } else {
-      S.twView = view;
-    }
-    _showTwView(S.twView);
-    if (S.twView === 'early')    renderTwEarlyStageView();
-    else if (S.twView === 'breakout') renderTwBreakoutView();
-    else { loadTwStrategy(S.twStrategy); }
-  });
-});
-
-// 台股策略 tab：三個互斥模式
 document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     if (btn.disabled) return;
-    S.twStrategy = btn.dataset.strategy;
-    S.chipsFilter = false;
+    toggleTwStrategy(btn.dataset.strategy);
     updateStrategyTabs();
     loadTwStrategyMulti();
   });
 });
 
-document.querySelectorAll('#tw-strategy-tabs .tw-filter-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if (btn.disabled) return;
-    S.twStrategy = 'rs';
-    S.chipsFilter = !S.chipsFilter;
-    updateStrategyTabs();
-    loadTwStrategyMulti();
-  });
-});
+async function loadTwValueRanking(rsFullUrl, chipsUrl) {
+  let valueD = await fetch(rsFullUrl).then(r => r.json());
+  if (!(valueD.scores || []).length) valueD = await fetch(chipsUrl).then(r => r.json());
+  const scores = (valueD.scores || [])
+    .map(row => ({ ...row, turnover_value: computeTwTurnoverValue(row) }))
+    .filter(row => row.turnover_value != null)
+    .sort((a, b) => (b.turnover_value || 0) - (a.turnover_value || 0))
+    .slice(0, 100);
+  scores.forEach((r, i) => { r.value_rank = i + 1; });
+  return scores;
+}
 
-// 台股策略載入：RS排名 / 純籌碼前50 / RS籌碼共振
+function mergeTwRankStrategies(strategyRows) {
+  const active = S.twActiveStrategies.filter(s => s !== 'rotation');
+  const maps = Object.fromEntries(
+    Object.entries(strategyRows).map(([strategy, rows]) => [
+      strategy,
+      new Map((rows || []).map(row => [row.ticker, row])),
+    ])
+  );
+  const baseStrategy = active[0] || 'value';
+  const baseRows = strategyRows[baseStrategy] || [];
+  const merged = [];
+  baseRows.forEach(row => {
+    const ticker = row.ticker;
+    if (!active.every(strategy => maps[strategy]?.has(ticker))) return;
+    const combined = active.reduce((acc, strategy) => ({ ...acc, ...maps[strategy].get(ticker) }), {});
+    combined.turnover_value = combined.turnover_value ?? computeTwTurnoverValue(combined);
+    combined._rank_sum = active.reduce((sum, strategy) => {
+      const strategyRow = maps[strategy].get(ticker);
+      return sum + (strategyRow?.value_rank || strategyRow?.rank || 999);
+    }, 0);
+    merged.push(combined);
+  });
+  merged.sort((a, b) => (a._rank_sum || 0) - (b._rank_sum || 0));
+  merged.forEach((r, i) => { r.rank = i + 1; });
+  return merged;
+}
+
+// 台股策略載入：板塊輪動單選；成交值 / RS / 籌碼可交集疊加
 async function loadTwStrategyMulti() {
   S.sortKey = null;
   let scores = [];
@@ -3680,18 +3978,9 @@ async function loadTwStrategyMulti() {
     const rsUrl = IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores';
     const chipsUrl = IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-scores';
     const rotationUrl = IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-sector-rotation';
+    const rsFullUrl = IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores-full';
 
-    if (S.twStrategy === 'rs' && S.chipsFilter) {
-      const [rsD, chipsD] = await Promise.all([
-        fetch(rsUrl).then(r => r.json()),
-        fetch(chipsUrl).then(r => r.json()),
-      ]);
-      const chipsSet = new Set((chipsD.scores || []).map(r => r.ticker));
-      scores = (rsD.scores || []).filter(r => chipsSet.has(r.ticker));
-    } else if (S.twStrategy === 'chips') {
-      const chipsD = await (await fetch(chipsUrl)).json();
-      scores = chipsD.scores || [];
-    } else if (S.twStrategy === 'rotation') {
+    if (S.twActiveStrategies.includes('rotation')) {
       const rotationD = await (await fetch(rotationUrl)).json();
       if (rotationD.sectors) {
         scores = rotationD.sectors || [];
@@ -3716,36 +4005,14 @@ async function loadTwStrategyMulti() {
         scores = [...seen.values()].sort((a, b) => (b.sector_flow_score || 0) - (a.sector_flow_score || 0));
         scores.forEach((r, i) => r.rank = i + 1);
       }
-    } else if (S.twStrategy === 'confluence') {
-      const rsFullUrl = IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores-full';
-      const [rsFullD, chipsD] = await Promise.all([
-        fetch(rsFullUrl).then(r => r.json()),
-        fetch(chipsUrl).then(r => r.json()),
-      ]);
-      const allRsFull = rsFullD.scores || [];
-      const rsMap    = new Map(allRsFull.map(r => [r.ticker, r]));
-      const rsMax    = Math.max(...allRsFull.map(r => r.rs_score || 0), 1);
-      const chipsMax = Math.max(...(chipsD.scores || []).map(r => r.tw_score || 0), 1);
-      scores = (chipsD.scores || []).map(r => {
-        const rsRow = rsMap.get(r.ticker) || {};
-        const rsNorm     = (rsRow.rs_score          || 0) / rsMax    * 30;
-        const chipsNorm  = (r.tw_score              || 0) / chipsMax * 40;
-        const sectorNorm = (r.sector_flow_score     || 0) / 100      * 30;
-        return {
-          ...r,
-          rs_score:         rsRow.rs_score,
-          q1_pct:           rsRow.q1_pct,
-          q2_pct:           rsRow.q2_pct,
-          q3_pct:           rsRow.q3_pct,
-          q4_pct:           rsRow.q4_pct,
-          confluence_score: rsNorm + chipsNorm + sectorNorm,
-        };
-      })
-      .sort((a, b) => b.confluence_score - a.confluence_score);
-      scores.forEach((r, i) => { r.rank = i + 1; });
     } else {
-      const rsD = await (await fetch(rsUrl)).json();
-      scores = rsD.scores || [];
+      const active = S.twActiveStrategies.filter(s => s !== 'rotation');
+      const loaders = {};
+      if (active.includes('value')) loaders.value = loadTwValueRanking(rsFullUrl, chipsUrl);
+      if (active.includes('rs')) loaders.rs = fetch(rsUrl).then(r => r.json()).then(d => d.scores || []);
+      if (active.includes('chips')) loaders.chips = fetch(chipsUrl).then(r => r.json()).then(d => d.scores || []);
+      const entries = await Promise.all(Object.entries(loaders).map(async ([strategy, promise]) => [strategy, await promise]));
+      scores = mergeTwRankStrategies(Object.fromEntries(entries));
     }
   } catch(e) { console.warn('tw strategy fetch failed', e); }
   S.scores = scores;
@@ -3753,146 +4020,12 @@ async function loadTwStrategyMulti() {
 }
 
 async function loadTwStrategy(mode) {
-  if (mode) S.twStrategy = mode;
+  if (mode) {
+    S.twActiveStrategies = [mode];
+    S.twStrategy = twPrimaryStrategy();
+  }
   updateStrategyTabs();
   await loadTwStrategyMulti();
-}
-
-// 台股突破觀察渲染
-async function renderTwBreakoutView() {
-  const tbody = document.getElementById('tw-breakout-body');
-  const thead = document.getElementById('tw-breakout-head');
-  const empty = document.getElementById('tw-breakout-empty');
-  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text2)">載入中…</td></tr>';
-  empty.style.display = 'none';
-
-  let candidates = [];
-  try {
-    const url = IS_STATIC ? `${STATIC_BASE}/tw_breakout.json` : '/api/tw-breakout-candidates';
-    const r = await fetch(url);
-    const d = await r.json();
-    candidates = (d.candidates || []).slice(0, 30);
-  } catch(e) { console.warn('tw-breakout fetch failed', e); }
-
-  if (!candidates.length) {
-    empty.style.display = ''; thead.innerHTML = ''; tbody.innerHTML = ''; return;
-  }
-
-  const TH = (w, align, label) =>
-    `<th style="width:${w};padding:8px 10px;font-size:10px;color:var(--text1);text-align:${align}">${label}</th>`;
-  thead.innerHTML = `<tr style="background:var(--bg1)">
-    ${TH('44px','center','#')}
-    ${TH('160px','left','標的')}
-    ${TH('82px','right','PRICE')}
-    ${TH('70px','right','漲跌')}
-    ${TH('70px','right','當日%')}
-    ${TH('82px','right','BREAKOUT')}
-    ${TH('80px','right','slope_20d')}
-    ${TH('80px','right','slope_60d')}
-    ${TH('64px','right','RSI')}
-  </tr>`;
-
-  tbody.innerHTML = candidates.map((r, i) => {
-    const dir    = (r.day_return || 0) > 0 ? 1 : (r.day_return || 0) < 0 ? -1 : 0;
-    const isLim  = !!r.is_limit_up;
-    // 台股：紅漲綠跌；漲停套背景底色
-    const dirColor  = dir > 0 ? 'var(--down)' : dir < 0 ? 'var(--up)' : 'var(--text0)';
-    const cellColor = isLim ? '#ffffff' : dirColor;
-    const limBg     = isLim ? 'background:rgba(127,29,29,0.7);' : '';
-    const bkCol     = (r.breakout_score || 0) >= 80 ? 'var(--accent)' : 'var(--gold)';
-    const code   = r.stock_id || r.ticker.split('.')[0];
-    const nameEl = r.name
-      ? `<span class="tc-code">${code}</span><span class="tc-name">${r.name}</span>`
-      : `<span class="tc-code">${code}</span>`;
-    // 漲跌絕對值
-    const chgVal = (r.price != null && r.day_return != null && r.day_return !== -1)
-      ? r.price * r.day_return / (1 + r.day_return) : null;
-    const chgStr = chgVal == null ? '—' : (chgVal < 0 ? '-' : '') + Math.abs(chgVal).toFixed(2);
-    return `<tr onclick="pickTicker('${r.ticker}')" style="cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04)">
-      <td style="text-align:center;color:var(--text2);padding:8px 10px;font-size:16px">${i+1}</td>
-      <td style="text-align:left;padding:8px 10px" class="ticker-cell">${nameEl}</td>
-      <td style="text-align:right;padding:8px 10px;font-size:16px;${limBg}color:${cellColor}">${r.price!=null?r.price.toFixed(2):'—'}</td>
-      <td style="text-align:right;padding:8px 10px;font-size:16px;${limBg}color:${cellColor}">${chgStr}</td>
-      <td style="text-align:right;padding:8px 10px;font-size:16px;${limBg}color:${cellColor}">${pct(r.day_return)}</td>
-      <td style="text-align:right;color:${bkCol};font-weight:600;padding:8px 10px;font-size:16px">${(r.breakout_score||0).toFixed(1)}</td>
-      <td style="text-align:right;color:var(--up);padding:8px 10px;font-size:16px">+${(r.slope_20d||0).toFixed(3)}</td>
-      <td style="text-align:right;color:var(--down);padding:8px 10px;font-size:16px">${(r.slope_60d||0).toFixed(3)}</td>
-      <td style="text-align:right;color:var(--text0);padding:8px 10px;font-size:16px">${(r.rsi||0).toFixed(1)}</td>
-    </tr>`;
-  }).join('');
-}
-
-// 台股起漲觀察渲染
-async function renderTwEarlyStageView() {
-  const tbody = document.getElementById('tw-early-body');
-  const thead = document.getElementById('tw-early-head');
-  const empty = document.getElementById('tw-early-empty');
-  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text2)">載入中…</td></tr>';
-  empty.style.display = 'none';
-
-  let candidates = [];
-  try {
-    const url = IS_STATIC ? `${STATIC_BASE}/tw_early_stage.json` : '/api/tw-early-stage';
-    const d = await (await fetch(url)).json();
-    candidates = (d.candidates || []);
-  } catch(e) { console.warn('tw-early-stage fetch failed', e); }
-
-  if (!candidates.length) {
-    empty.style.display = ''; thead.innerHTML = ''; tbody.innerHTML = ''; return;
-  }
-
-  const TH = (w, align, label) =>
-    `<th style="width:${w};padding:8px 10px;font-size:10px;color:var(--text1);text-align:${align}">${label}</th>`;
-  thead.innerHTML = `<tr style="background:var(--bg1)">
-    ${TH('52px','center','RANK')}
-    ${TH('160px','left','標的')}
-    ${TH('82px','right','PRICE')}
-    ${TH('70px','right','漲跌')}
-    ${TH('70px','right','當日%')}
-    ${TH('88px','right','成交量(張)')}
-    ${TH('80px','right','BREAKOUT')}
-    ${TH('80px','right','slope_20d')}
-    ${TH('80px','right','slope_60d')}
-    ${TH('72px','right','RS Score')}
-    ${TH('100px','center','法人進場')}
-  </tr>`;
-
-  tbody.innerHTML = candidates.map((r, i) => {
-    const dir     = (r.day_return || 0) > 0 ? 1 : (r.day_return || 0) < 0 ? -1 : 0;
-    const isLim   = !!r.is_limit_up;
-    const cellColor = isLim ? '#ffffff' : dir > 0 ? 'var(--down)' : dir < 0 ? 'var(--up)' : 'var(--text0)';
-    const limBg     = isLim ? 'background:rgba(127,29,29,0.7);' : '';
-    const bkCol     = (r.breakout_score || 0) >= 40 ? 'var(--gold)' : 'var(--text2)';
-    const code      = r.stock_id || r.ticker.split('.')[0];
-    const nameEl    = r.name
-      ? `<span class="tc-code">${code}</span><span class="tc-name">${r.name}</span>`
-      : `<span class="tc-code">${code}</span>`;
-    const chgVal    = (r.price != null && r.day_return != null && r.day_return !== -1)
-      ? r.price * r.day_return / (1 + r.day_return) : null;
-    const chgStr    = chgVal == null ? '—' : (chgVal < 0 ? '-' : '') + Math.abs(chgVal).toFixed(2);
-
-    // 法人進場標籤
-    const hasFi  = (r.fi_net || 0) > 0;
-    const hasIt  = (r.it_consec_days || 0) >= 3;
-    let instLabel = '';
-    if (hasFi && hasIt) instLabel = `<span style="color:#a78bfa;font-size:13px">外資+投信${r.it_consec_days}天</span>`;
-    else if (hasIt)     instLabel = `<span style="color:#a78bfa;font-size:13px">投信${r.it_consec_days}天</span>`;
-    else if (hasFi)     instLabel = `<span style="color:#a78bfa;font-size:13px">外資買超</span>`;
-
-    return `<tr onclick="pickTicker('${r.ticker}')" style="cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04)">
-      <td style="text-align:center;color:var(--text2);padding:8px 10px;font-size:16px">${i+1}</td>
-      <td style="text-align:left;padding:8px 10px" class="ticker-cell">${nameEl}</td>
-      <td style="text-align:right;padding:8px 10px;font-size:16px;${limBg}color:${cellColor}">${r.price!=null?r.price.toFixed(2):'—'}</td>
-      <td style="text-align:right;padding:8px 10px;font-size:16px;${limBg}color:${cellColor}">${chgStr}</td>
-      <td style="text-align:right;padding:8px 10px;font-size:16px;${limBg}color:${cellColor}">${pct(r.day_return)}</td>
-      <td style="text-align:right;padding:8px 10px;font-size:16px;color:var(--text0)">${r.volume!=null?r.volume.toLocaleString():'—'}</td>
-      <td style="text-align:right;color:${bkCol};font-weight:600;padding:8px 10px;font-size:16px">${(r.breakout_score||0).toFixed(1)}</td>
-      <td style="text-align:right;color:var(--up);padding:8px 10px;font-size:16px">+${(r.slope_20d||0).toFixed(3)}</td>
-      <td style="text-align:right;color:var(--down);padding:8px 10px;font-size:16px">${(r.slope_60d||0).toFixed(3)}</td>
-      <td style="text-align:right;color:var(--accent);padding:8px 10px;font-size:16px">${(r.rs_score||0).toFixed(1)}</td>
-      <td style="text-align:center;padding:8px 10px">${instLabel}</td>
-    </tr>`;
-  }).join('');
 }
 
 // History range buttons (re-fetch on change)
@@ -3924,21 +4057,84 @@ document.getElementById('c-week').addEventListener('click', () => {
   renderChart();
 });
 
-// EMA buttons
-['c-ema10','c-ema20','c-ema50','c-ema120','c-ema200'].forEach(id => {
-  const btn  = document.getElementById(id);
-  const span = parseInt(btn.dataset.span);
-  btn.addEventListener('click', () => {
-    S.ema[span] = !S.ema[span];
-    btn.classList.toggle('on', S.ema[span]);
+document.getElementById('chart-indicator-buttons').addEventListener('click', e => {
+  const btn = e.target.closest('[data-indicator-toggle]');
+  if (!btn) return;
+  const idx = parseInt(btn.dataset.indicatorToggle, 10);
+  if (!S.indicators[idx]) return;
+  S.indicators[idx].enabled = !S.indicators[idx].enabled;
+  saveIndicatorSettings();
+  renderIndicatorControls();
+  renderChart();
+});
+
+document.getElementById('chart-indicator-collapse-btn').addEventListener('click', e => {
+  e.stopPropagation();
+  toggleIndicatorOverlay();
+});
+
+document.getElementById('chart-indicator-settings-btn').addEventListener('click', e => {
+  e.stopPropagation();
+  toggleIndicatorOverlay(false);
+  document.getElementById('chart-indicator-panel').classList.toggle('open');
+});
+
+document.getElementById('chart-indicator-panel').addEventListener('click', e => {
+  e.stopPropagation();
+  const modeBtn = e.target.closest('[data-indicator-mode]');
+  if (modeBtn) {
+    S.indicatorMode = modeBtn.dataset.indicatorMode === 'MA' ? 'MA' : 'EMA';
+    saveIndicatorSettings();
+    renderIndicatorControls();
     renderChart();
-  });
+    return;
+  }
+  const row = e.target.closest('[data-indicator-index]');
+  if (!row) return;
+  const idx = parseInt(row.dataset.indicatorIndex, 10);
+  const item = S.indicators[idx];
+  if (!item) return;
+  if (e.target.closest('.indicator-check')) {
+    item.enabled = !item.enabled;
+    saveIndicatorSettings();
+    renderIndicatorControls();
+    renderChart();
+  }
+});
+
+function updateIndicatorPeriod(input) {
+  const row = input.closest('[data-indicator-index]');
+  const idx = parseInt(row.dataset.indicatorIndex, 10);
+  const item = S.indicators[idx];
+  if (!item) return;
+  item.period = Math.max(1, Math.min(999, parseInt(input.value, 10) || item.period));
+  saveIndicatorSettings();
+  renderIndicatorControls();
+  renderChart();
+}
+
+document.querySelectorAll('.indicator-period-input').forEach(input => {
+  input.addEventListener('input', e => updateIndicatorPeriod(e.target));
+  input.addEventListener('change', e => updateIndicatorPeriod(e.target));
+});
+
+document.getElementById('chart-indicator-reset').addEventListener('click', () => {
+  setIndicatorSettings({ indicatorMode: 'EMA', indicators: cloneIndicators(DEFAULT_INDICATORS) });
+});
+
+document.addEventListener('click', e => {
+  const panel = document.getElementById('chart-indicator-panel');
+  if (!panel.classList.contains('open')) return;
+  if (e.target.closest('#chart-indicator-panel') || e.target.closest('#chart-indicator-settings-btn')) return;
+  panel.classList.remove('open');
 });
 
 // ══════════════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════════════
 initChart();
+renderIndicatorControls();
+toggleIndicatorOverlay(false);
 updateStrategyTabs();
 renderHead();
 renderBody();
@@ -4024,7 +4220,7 @@ function updateStickyLefts() {
 ;(function() {
   const divider    = document.getElementById('divider');
   const chartPanel = document.getElementById('chart-panel');
-  const MIN_W = 260, MAX_W = 900, DEFAULT_W = 430;
+  const MIN_W = 260, MAX_W = 1400, DEFAULT_W = 430;
   let dragging = false, startX = 0, startW = 0;
 
   divider.addEventListener('mousedown', e => {
@@ -4065,6 +4261,7 @@ function updateStickyLefts() {
   let state         = 0; // 0: idle, 1: selecting, 2: locked
   let startLogical  = null;
   let startClientX  = null;
+  let startClientY  = null;
   let activeRange   = null;
   let suppressClick = false;
 
@@ -4083,6 +4280,13 @@ function updateStickyLefts() {
     if (!lwChart) return null;
     const x = lwChart.timeScale().logicalToCoordinate(idx);
     return x == null ? null : x;
+  }
+
+  function yToPrice(clientY) {
+    if (!candleSeries) return null;
+    const y = clientY - layer.getBoundingClientRect().top;
+    const price = candleSeries.coordinateToPrice(y);
+    return price == null || !Number.isFinite(price) ? null : price;
   }
 
   function fmtVol(v) {
@@ -4112,7 +4316,7 @@ function updateStickyLefts() {
     return null;
   }
 
-  function selectedRange(endClientX) {
+  function selectedRange(endClientX, endClientY) {
     if (!lwChart || startLogical == null) return null;
     const candles = currentCandles();
     if (!candles.length) return null;
@@ -4124,36 +4328,46 @@ function updateStickyLefts() {
     const i1 = clamp(Math.min(startLogical, endRaw));
     const i2 = clamp(Math.max(startLogical, endRaw));
     const lr = layer.getBoundingClientRect();
+    const startPrice = startClientY == null ? null : yToPrice(startClientY);
+    const endPrice = endClientY == null ? null : yToPrice(endClientY);
 
-    return { candles, i1, i2, lr };
+    return { candles, i1, i2, lr, startPrice, endPrice };
   }
 
-  function updateSelection(endClientX) {
+  function updateSelection(endClientX, endClientY) {
     if (startLogical == null || !lwChart) return null;
 
     const lr = layer.getBoundingClientRect();
     const clampX = x => Math.max(0, Math.min(x, layer.clientWidth));
+    const clampY = y => Math.max(0, Math.min(y, layer.clientHeight));
     const rawStartX = logicalToX(startLogical);
     const fallbackStartX = startClientX == null ? endClientX - lr.left : startClientX - lr.left;
+    const fallbackStartY = startClientY == null ? endClientY - lr.top : startClientY - lr.top;
     const startX = Number.isFinite(rawStartX) ? clampX(rawStartX) : clampX(fallbackStartX);
     const endX = clampX(endClientX - lr.left);
+    const startY = clampY(fallbackStartY);
+    const endY = clampY(endClientY - lr.top);
     const left = Math.min(startX, endX);
+    const top = Math.min(startY, endY);
     const width = Math.abs(endX - startX);
+    const height = Math.abs(endY - startY);
 
-    if (Number.isFinite(left) && Number.isFinite(width)) {
+    if (Number.isFinite(left) && Number.isFinite(top) && Number.isFinite(width) && Number.isFinite(height)) {
       selEl.style.left = left + 'px';
+      selEl.style.top = top + 'px';
       selEl.style.width = width + 'px';
+      selEl.style.height = height + 'px';
     }
 
-    const range = selectedRange(endClientX);
+    const range = selectedRange(endClientX, endClientY);
     if (range) activeRange = range;
     return activeRange;
   }
 
   function showStats(endClientX, endClientY) {
-    const range = selectedRange(endClientX) || activeRange;
+    const range = selectedRange(endClientX, endClientY) || activeRange;
     if (!range) return false;
-    const { candles, i1, i2, lr } = range;
+    const { candles, i1, i2, lr, startPrice, endPrice } = range;
 
     const slice    = candles.slice(i1, i2 + 1);
     if (!slice.length) return false;
@@ -4177,9 +4391,18 @@ function updateStickyLefts() {
       : `${barCount}根K棒, ${durHrs}小時`;
 
     const sign = isUp ? '+' : '-';
+    const hasPriceMeasure = startPrice != null && endPrice != null && startPrice !== 0;
+    const priceDiff = hasPriceMeasure ? endPrice - startPrice : null;
+    const pricePct = hasPriceMeasure ? priceDiff / startPrice * 100 : null;
+    const priceUp = priceDiff == null || priceDiff >= 0;
+    const priceSign = priceUp ? '+' : '-';
+    const priceLine = hasPriceMeasure
+      ? `<div class="mt-r2">垂直距離 ${priceSign}${fmtPrice(Math.abs(priceDiff))} (${priceUp?'+':''}${pricePct.toFixed(2)}%)</div>`
+      : '';
     tipEl.innerHTML =
       `<div class="mt-r1 ${isUp ? 'up' : 'down'}">${sign}${fmtPrice(Math.abs(diff))} (${isUp?'+':''}${pct.toFixed(2)}%)<span class="mt-vol">總量 ${fmtVol(totalVol)}</span></div>` +
-      `<div class="mt-r2">${timeStr}</div>` +
+      priceLine +
+      `<div class="mt-r3">${timeStr}</div>` +
       `<div class="mt-r3">平均成交量 ${fmtVol(avgVol)}</div>`;
     tipEl.style.display = 'block';
 
@@ -4198,9 +4421,13 @@ function updateStickyLefts() {
     state = 0;
     startLogical = null;
     startClientX = null;
+    startClientY = null;
     activeRange = null;
     selEl.style.left  = '0';
+    selEl.style.top   = '0';
     selEl.style.width = '0';
+    selEl.style.height = '0';
+    selEl.style.display = 'none';
     tipEl.style.display = 'none';
     setMeasureLayerEnabled(false);
   }
@@ -4222,8 +4449,10 @@ function updateStickyLefts() {
     state = 1;
     startLogical = logical;
     startClientX = clientX;
+    startClientY = clientY;
+    selEl.style.display = 'block';
     setMeasureLayerEnabled(true);
-    updateSelection(clientX);
+    updateSelection(clientX, clientY);
     return true;
   }
 
@@ -4275,7 +4504,7 @@ function updateStickyLefts() {
 
   document.addEventListener('mousemove', e => {
     if (state !== 1) return;
-    updateSelection(e.clientX);
+    updateSelection(e.clientX, e.clientY);
   });
 })();
 </script>
