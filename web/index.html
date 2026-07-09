@@ -2270,6 +2270,8 @@ function twPrimaryStrategy() {
 
 function twScoreKey() {
   if (twHasStrategy('rotation')) return 'sector_flow_score';
+  const active = S.twActiveStrategies.filter(s => s !== 'rotation');
+  if (active.length > 1) return '_rank_sum';
   if (S.twStrategy === 'rs' && twHasStrategy('rs')) return 'rs_score';
   if (S.twStrategy === 'value' && twHasStrategy('value')) return 'turnover_value';
   if (S.twStrategy === 'chips' && twHasStrategy('chips')) return 'tw_score';
@@ -2368,6 +2370,9 @@ function sortedData() {
           ? (r.momentum_score * r.momentum_score * r.sector_multiplier) / 100 : null;
         av = cv(a) ?? -Infinity;
         bv = cv(b) ?? -Infinity;
+      } else if (key === '_rank_sum') {
+        // 多策略合併排名：rank_sum 越小越好，固定升序
+        return (a._rank_sum ?? Infinity) - (b._rank_sum ?? Infinity);
       } else {
         av = a[key] ?? -Infinity;
         bv = b[key] ?? -Infinity;
