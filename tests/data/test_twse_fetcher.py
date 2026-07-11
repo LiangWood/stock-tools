@@ -4,6 +4,7 @@ import pytest
 from data.twse_fetcher import (
     fetch_tw_all,
     _fetch_twse_t86,
+    _fetch_twse_quote,
     _parse_twse_quote,
     _parse_twse_margin,
     _parse_tpex_quote,
@@ -147,6 +148,14 @@ def test_parse_twse_quote_mi_index_table_latest_close():
     assert result["2330"]["turnover_10k"] == 3_150_700.0
     assert result["2330"]["day_return"] == pytest.approx(5.0 / (980.0 - 5.0), rel=1e-3)
     assert result["2454"]["day_return"] == pytest.approx(-15.0 / (1205.0 + 15.0), rel=1e-3)
+
+
+def test_fetch_twse_quote_requests_recent_trade_date():
+    with patch("data.twse_fetcher._get", return_value=TWSE_MI_INDEX_OK) as get:
+        result = _fetch_twse_quote()
+
+    assert result["2330"]["turnover_10k"] == 3_150_700.0
+    assert "&date=" in get.call_args.args[0]
 
 
 def test_parse_twse_quote_pe_none_when_dash():

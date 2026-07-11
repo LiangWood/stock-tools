@@ -59,6 +59,7 @@ _state: dict = {
     "scores": [],
     "breakout_candidates": [],      # US 突破觀察清單
     "tw_rs_scores": [],             # 台股 RS Score 排名
+    "tw_value_ranking": [],         # 台股全市場成交值排名
     "tw_breakout_candidates": [],   # 台股突破觀察清單
     "tw_early_stage": [],           # 台股起漲觀察清單
     "tw_sector_rotation": [],       # 台股板塊資金輪動
@@ -1713,6 +1714,47 @@ def _df_to_records(df) -> list[dict]:
     return [{k: _clean(v) for k, v in row.items()} for row in df.to_dict(orient="records")]
 
 
+def _build_tw_value_ranking(
+    ticker_data: dict,
+    rs_records: list[dict] | None = None,
+    top_n: int = 100,
+) -> list[dict]:
+    """以交易所實際成交金額建立台股全市場成交值排名。"""
+    rs_by_ticker = {row.get("ticker"): row for row in rs_records or []}
+    ranking = []
+
+    for ticker, row in ticker_data.items():
+        if not row or row.get("stock_type") not in {"stock", "etf"}:
+            continue
+        turnover_10k = _safe_float(row.get("turnover_10k"))
+        if turnover_10k is None or turnover_10k <= 0:
+            continue
+
+        # 技術欄位僅供表格顯示；成交值排序只使用交易所成交金額。
+        rs_row = rs_by_ticker.get(ticker, {})
+        ranking.append({
+            "ticker": ticker,
+            "stock_id": ticker.split(".")[0],
+            "name": row.get("name", ""),
+            "stock_name": row.get("name", ""),
+            "price": row.get("price"),
+            "day_return": row.get("day_return"),
+            "volume": row.get("volume", 0),
+            "turnover_value": turnover_10k * 10_000,
+            "ret_20d": rs_row.get("ret_20d"),
+            "q1_pct": rs_row.get("q1_pct"),
+            "q2_pct": rs_row.get("q2_pct"),
+            "rs_score": rs_row.get("rs_score"),
+        })
+
+    ranking.sort(key=lambda row: row["turnover_value"], reverse=True)
+    ranking = ranking[:top_n]
+    for rank, row in enumerate(ranking, start=1):
+        row["rank"] = rank
+        row["value_rank"] = rank
+    return ranking
+
+
 def _ohlcv_to_json(df) -> dict | None:
     if df is None or df.empty:
         return None
@@ -1752,6 +1794,8 @@ def _fetch_worker(universe: str):
                 _state["progress"] = "計算 RS Score…"
             tw_rs_df_full = compute_tw_rs_scores(raw, top_n=None)  # 全市場，供共振使用
             tw_rs_df = tw_rs_df_full.head(100)
+            tw_rs_full_records = _df_to_records(tw_rs_df_full)
+            tw_value_ranking = _build_tw_value_ranking(raw, tw_rs_full_records)
             with _lock:
                 _state["progress"] = "計算籌碼分數…"
             scores_df = compute_tw_scores(raw)
@@ -1772,7 +1816,8 @@ def _fetch_worker(universe: str):
                 _state["status"]                = "done"
                 _state["scores"]                = _df_to_records(scores_df)
                 _state["tw_rs_scores"]          = _df_to_records(tw_rs_df)
-                _state["tw_rs_scores_full"]     = _df_to_records(tw_rs_df_full)
+                _state["tw_rs_scores_full"]     = tw_rs_full_records
+                _state["tw_value_ranking"]      = tw_value_ranking
                 _state["tw_sector_rotation"]    = sector_rotation
                 _state["tw_breakout_candidates"] = _df_to_records(tw_bk_df)
                 _state["tw_early_stage"]        = _df_to_records(tw_early_df)
@@ -2095,6 +2140,11 @@ class Handler(BaseHTTPRequestHandler):
                         self._json(data)
                         return
                 self._json({"scores": tw_rs_full})
+
+            elif route == "/api/tw-value-ranking":
+                with _lock:
+                    tw_value_ranking = _state.get("tw_value_ranking", [])
+                self._json({"scores": tw_value_ranking})
 
             elif route == "/api/tw-sector-rotation":
                 with _lock:

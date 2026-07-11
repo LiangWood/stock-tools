@@ -3936,16 +3936,9 @@ document.querySelectorAll('#tw-strategy-tabs .tw-strategy-btn').forEach(btn => {
   });
 });
 
-async function loadTwValueRanking(rsFullUrl, chipsUrl) {
-  let valueD = await fetch(rsFullUrl).then(r => r.json());
-  if (!(valueD.scores || []).length) valueD = await fetch(chipsUrl).then(r => r.json());
-  const scores = (valueD.scores || [])
-    .map(row => ({ ...row, turnover_value: computeTwTurnoverValue(row) }))
-    .filter(row => row.turnover_value != null)
-    .sort((a, b) => (b.turnover_value || 0) - (a.turnover_value || 0))
-    .slice(0, 100);
-  scores.forEach((r, i) => { r.value_rank = i + 1; });
-  return scores;
+async function loadTwValueRanking(valueUrl) {
+  const valueD = await fetch(valueUrl).then(r => r.json());
+  return valueD.scores || [];
 }
 
 function mergeTwRankStrategies(strategyRows) {
@@ -3983,7 +3976,7 @@ async function loadTwStrategyMulti() {
     const rsUrl = IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores';
     const chipsUrl = IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-scores';
     const rotationUrl = IS_STATIC ? `${STATIC_BASE}/tw_scores.json` : '/api/tw-sector-rotation';
-    const rsFullUrl = IS_STATIC ? `${STATIC_BASE}/tw_rs_scores.json` : '/api/tw-rs-scores-full';
+    const valueUrl = IS_STATIC ? `${STATIC_BASE}/tw_value_ranking.json` : '/api/tw-value-ranking';
 
     if (S.twActiveStrategies.includes('rotation')) {
       const rotationD = await (await fetch(rotationUrl)).json();
@@ -4013,7 +4006,7 @@ async function loadTwStrategyMulti() {
     } else {
       const active = S.twActiveStrategies.filter(s => s !== 'rotation');
       const loaders = {};
-      if (active.includes('value')) loaders.value = loadTwValueRanking(rsFullUrl, chipsUrl);
+      if (active.includes('value')) loaders.value = loadTwValueRanking(valueUrl);
       if (active.includes('rs')) loaders.rs = fetch(rsUrl).then(r => r.json()).then(d => d.scores || []);
       if (active.includes('chips')) loaders.chips = fetch(chipsUrl).then(r => r.json()).then(d => d.scores || []);
       const entries = await Promise.all(Object.entries(loaders).map(async ([strategy, promise]) => [strategy, await promise]));

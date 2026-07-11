@@ -1,5 +1,6 @@
 import logging
 import warnings
+from datetime import date, timedelta
 from typing import Optional, Callable
 import requests
 import pandas as pd
@@ -230,6 +231,23 @@ def _parse_twse_quote(data) -> dict[str, dict]:
     return result
 
 
+def _fetch_twse_quote() -> dict[str, dict]:
+    """取得最近一個有資料的上市收盤行情，避開休市日與舊預設回應。"""
+    for delta in range(7):
+        trade_date = date.today() - timedelta(days=delta)
+        url = f"{_TWSE_QUOTE}&date={trade_date:%Y%m%d}"
+        try:
+            result = _parse_twse_quote(_get(url))
+        except Exception as exc:
+            logger.warning("TWSE quote %s failed: %s", trade_date, exc)
+            continue
+        if result:
+            logger.info("TWSE quote %s: %d records", trade_date, len(result))
+            return result
+    logger.warning("TWSE quote: recent 7 days have no usable records")
+    return {}
+
+
 def _parse_twse_margin(data: list) -> dict[str, dict]:
     """
     MI_MARGN 格式：
@@ -276,8 +294,9 @@ def _parse_tpex_quote(data: dict) -> dict[str, dict]:
             vol = _to_int(row[7]) // 1000 if len(row) > 7 else 0
             if not code or price <= 0:
                 continue
-            # Approximate turnover: price × lots × 1000 shares / 10000 = price × lots / 10
-            turnover_10k = price * vol / 10
+            # 上櫃資料有原始成交金額，避免以收盤價推算造成盤中與均價誤差。
+            trade_value = _to_float(row[8]) if len(row) > 8 else 0.0
+            turnover_10k = trade_value / 10_000 if trade_value > 0 else price * vol / 10
             last_bid = _to_float(row[10]) if len(row) > 10 else None
             last_ask = _to_float(row[12]) if len(row) > 12 else None
             next_limit_up = _to_float(row[15]) if len(row) > 15 else None
@@ -381,9 +400,11 @@ def fetch_tw_all(
 ) -> dict[str, dict]:
     fetched: dict[str, dict] = {}
 
-    # TWSE — openAPI（verify=True，憑證正常）
+    # TWSE — 收盤行情需指定最近交易日，否則 API 可能回傳過期預設資料。
+    fetched["twse_quote"] = _fetch_twse_quote()
+
+    # TWSE openAPI（verify=True，憑證正常）
     for key, url, parser, verify in [
-        ("twse_quote",  _TWSE_QUOTE,  _parse_twse_quote,  True),
         ("twse_margin", _TWSE_MARGIN, _parse_twse_margin, True),
     ]:
         try:
