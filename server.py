@@ -1488,7 +1488,7 @@ def _compute_sector_metrics(scores_df) -> object:
     """
     板塊雙層結構：
       sector_rs         — 板塊內所有個股 rs_rating 的平均值
-      sector_rank       — 個股在板塊內的排名，格式 'N/M'
+      sector_rank       — 個股全市場排名（不分板塊）
       sector_multiplier — 強板塊 ×1.10 / 中性 ×1.00 / 弱板塊 ×0.90
     """
     import pandas as pd
@@ -1505,11 +1505,10 @@ def _compute_sector_metrics(scores_df) -> object:
     df = df.merge(sector_avg, on="sector", how="left")
     df["sector_rs"] = df["sector_rs"].fillna(50.0)
 
-    # 板塊內個股排名（rs_rating 降序）
-    df["sector_rank"] = df.groupby("sector")["rs_rating"].rank(
+    # 全市場個股排名（rs_rating 降序，不分板塊）
+    df["sector_rank"] = df["rs_rating"].rank(
         ascending=False, method="min"
     ).fillna(0).astype(int)
-    sector_count = df.groupby("sector")["ticker"].transform("count")
     df["sector_rank"] = df["sector_rank"].astype(str)   # 只顯示排名，不附 /N
 
     # 板塊乘數：全部板塊的 sector_rs 做三分位
